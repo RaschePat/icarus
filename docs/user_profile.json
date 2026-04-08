@@ -1,0 +1,12 @@
+{
+  "user_id": "STRING",
+  "cumulative_aptitude": {
+    "logic_avg": 0,
+    "planning_avg": 0,
+    "ux_avg": 0,
+    "data_avg": 0
+  },
+  "session_count": 0,
+  "career_identity": ["#TAGS"],
+  "last_updated": "ISO_8601"
+}

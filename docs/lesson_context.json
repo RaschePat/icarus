@@ -1,0 +1,35 @@
+{
+  "lesson_id": "STRING",
+  "metadata": {
+    "topic": "STRING",
+    "instructor_id": "STRING",
+    "timestamp": "ISO_8601",
+    "instructor_style": {
+      "language": "java",
+      "naming_convention": "camelCase",
+      "comment_style": "Korean",
+      "preferred_libraries": ["LIST"]
+    }
+  },
+  "knowledge_base": {
+    "keywords": ["LIST"],
+    "core_concepts": [
+      {
+        "id": "STRING",
+        "title": "STRING",
+        "summary": "STRING"
+      }
+    ]
+  },
+  "harness_config": {
+    "target_logic": [
+      {
+        "logic_id": "STRING",
+        "search_pattern": "EXACT_CODE_STRING",
+        "code_snippet": "FULL_CORRECT_CODE",
+        "match_strategy": "first_occurrence"
+      }
+    ],
+    "quiz_pool": []
+  }
+}

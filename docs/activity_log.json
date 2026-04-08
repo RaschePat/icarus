@@ -1,0 +1,38 @@
+{
+  "session_id": "STRING",
+  "user_id": "STRING",
+  "timestamp_start": "ISO_8601",
+  "logs": [
+    {
+      "timestamp": "ISO_8601",
+      "event_type": "FOCUS_CHANGE",
+      "data": { "state": "FOCUS_OUT | FOCUS_IN", "trigger": "WINDOW_BLUR | WINDOW_FOCUS" }
+    },
+    {
+      "timestamp": "ISO_8601",
+      "event_type": "INPUT_TYPE",
+      "data": { "is_paste": "BOOLEAN", "file_extension": "STRING" }
+    },
+    {
+      "timestamp": "ISO_8601",
+      "event_type": "WING_REQUEST",
+      "data": { "category": "PLANNING | LOGIC | UX | DATA", "prompt_summary": "STRING" }
+    },
+    {
+      "timestamp": "ISO_8601",
+      "event_type": "QUIZ_RESULT",
+      "data": { "quiz_id": "STRING", "is_correct": "BOOLEAN", "attempt_count": "NUMBER" }
+    },
+    {
+      "timestamp": "ISO_8601",
+      "event_type": "HARNESS_ERROR",
+      "data": { "error_count": "NUMBER", "logic_id": "STRING" }
+    }
+  ],
+  "session_aptitude": {
+    "logic_score": 0,
+    "planning_score": 0,
+    "ux_score": 0,
+    "data_score": 0
+  }
+}
