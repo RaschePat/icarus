@@ -1,0 +1,107 @@
+/**
+ * Claude API 클라이언트 — Wing 시스템 프롬프트를 주입하여 Claude Sonnet과 대화합니다.
+ * 요청 카테고리(PLANNING/LOGIC/UX/DATA)를 분류하고 WING_REQUEST 이벤트를 기록합니다.
+ */
+import Anthropic from "@anthropic-ai/sdk";
+import * as vscode from "vscode";
+import { McpClient } from "./mcpClient";
+import type { Message } from "./wingPanel";
+
+const WING_SYSTEM_PROMPT = `# Role: ICARUS Wing Agent
+
+당신은 수강생의 IDE(VS Code) 내부에 상주하며 학습을 돕는 부조종사 'Wing'입니다.
+당신의 목표는 정답을 대신 짜주는 것이 아니라, 수강생이 스스로 로직을 완성하도록 유도하고
+그 과정의 데이터를 수집하는 것입니다.
+
+## 1. 지식 준수 (Knowledge Alignment)
+- lesson_context에 정의된 instructor_style을 엄격히 준수하십시오.
+- 강사의 변수 명명 규칙(naming_convention), 주석 스타일(comment_style), 선호 라이브러리를
+  그대로 모사하여 코드를 가이드하십시오.
+
+## 2. 힌트 제공 3단계 원칙 (Strict Rule)
+수강생의 학습 주도권을 위해 다음 단계를 반드시 지키십시오:
+1. 1단계 (개념 방향): run_evaluation 에러 3회 이상 감지 시 제공.
+2. 2단계 (참조 가이드): 1단계 제공 후, 입력 변화 없이 5분 이상 정체 시 제공.
+3. 3단계 (구조적 힌트): 수강생이 명시적으로 요청할 때만 제공.
+
+## 3. 제약 사항
+- 수강생의 요청 카테고리를 반드시 PLANNING / LOGIC / UX / DATA 중 하나로 분류하십시오.
+- 강사가 forbidden_moves로 지정한 패턴은 절대 사용하거나 추천하지 마십시오.
+- 기획적 질문에는 코드보다 구조 설계 위주로 답변하십시오.
+
+응답 형식:
+{
+  "category": "PLANNING|LOGIC|UX|DATA",
+  "message": "수강생에게 보여줄 응답 텍스트"
+}`;
+
+const CATEGORIES = ["PLANNING", "LOGIC", "UX", "DATA"] as const;
+type Category = (typeof CATEGORIES)[number];
+
+export class ClaudeClient {
+  private _anthropic?: Anthropic;
+
+  constructor(private readonly _mcp: McpClient) {}
+
+  private _getClient(): Anthropic {
+    if (!this._anthropic) {
+      const config = vscode.workspace.getConfiguration("wing");
+      const apiKey: string = config.get("anthropicApiKey") ?? "";
+      if (!apiKey) {
+        throw new Error("Wing: wing.anthropicApiKey 설정이 필요합니다.");
+      }
+      this._anthropic = new Anthropic({ apiKey });
+    }
+    return this._anthropic;
+  }
+
+  async chat(userText: string, history: Message[]): Promise<string> {
+    const client = this._getClient();
+
+    // 대화 히스토리를 Claude 형식으로 변환 (system 메시지 제외)
+    const anthropicMessages: Anthropic.MessageParam[] = history
+      .filter((m) => m.role !== "system")
+      .map((m) => ({
+        role: m.role === "user" ? "user" : "assistant",
+        content: m.text,
+      }));
+
+    // 현재 사용자 메시지 추가
+    anthropicMessages.push({ role: "user", content: userText });
+
+    let raw: string;
+    try {
+      const res = await client.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 1024,
+        system: WING_SYSTEM_PROMPT,
+        messages: anthropicMessages,
+      });
+      raw = (res.content[0] as Anthropic.TextBlock).text;
+    } catch (e) {
+      return `Wing 연결 오류: ${(e as Error).message}`;
+    }
+
+    // JSON 응답 파싱
+    let category: Category = "LOGIC";
+    let message = raw;
+    try {
+      const parsed = JSON.parse(raw);
+      category = CATEGORIES.includes(parsed.category) ? parsed.category : "LOGIC";
+      message = parsed.message ?? raw;
+    } catch {
+      // JSON이 아니면 그대로 사용
+    }
+
+    // WING_REQUEST 이벤트 기록
+    await this._mcp.writeActivityLog({
+      event_type: "WING_REQUEST",
+      data: {
+        category,
+        prompt_summary: userText.slice(0, 100),
+      },
+    }).catch(() => {/* MCP 미연결 시 무시 */});
+
+    return message;
+  }
+}

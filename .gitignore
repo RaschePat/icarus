@@ -1,1 +1,24 @@
+# macOS
 .DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+.venv/
+venv/
+*.egg-info/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+dist/
+*.tsbuildinfo
+
+# VS Code Extension build output
+extension/out/
+
+# 런타임 생성 파일
+activity_log.json

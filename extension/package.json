@@ -1,0 +1,79 @@
+{
+  "name": "icarus-wing",
+  "displayName": "ICARUS Wing",
+  "description": "AI 부조종사 Wing — 수강생 학습 보조 에이전트",
+  "version": "0.1.0",
+  "engines": { "vscode": "^1.90.0" },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "wing-sidebar",
+          "title": "Wing",
+          "icon": "media/wing-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "wing-sidebar": [
+        {
+          "type": "webview",
+          "id": "wing.chatPanel",
+          "name": "Wing 부조종사"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "wing.flightTest",
+        "title": "Wing: 비행테스트 실행"
+      },
+      {
+        "command": "wing.clearChat",
+        "title": "Wing: 대화 초기화"
+      }
+    ],
+    "configuration": {
+      "title": "Wing",
+      "properties": {
+        "wing.anthropicApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Anthropic API Key (Claude Sonnet)"
+        },
+        "wing.mcpServerPath": {
+          "type": "string",
+          "default": "",
+          "description": "MCP 서버 스크립트 절대 경로 (server.py)"
+        },
+        "wing.projectRoot": {
+          "type": "string",
+          "default": "",
+          "description": "수강생 프로젝트 루트 경로 (ICARUS_PROJECT_ROOT)"
+        },
+        "wing.icarusApiBase": {
+          "type": "string",
+          "default": "http://localhost:8000/v1",
+          "description": "ICARUS 백엔드 API 베이스 URL"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@modelcontextprotocol/sdk": "^1.11.0"
+  }
+}
