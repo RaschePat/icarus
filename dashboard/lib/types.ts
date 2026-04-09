@@ -60,6 +60,20 @@ export interface Session {
   ai_comment?:      string;
 }
 
+// ── 마이크로 프로젝트 ─────────────────────────────────────────────────────
+
+export type ProjectTemplate = "java" | "python" | "node";
+
+export interface MicroProject {
+  project_id:        string;
+  name:              string;
+  template:          ProjectTemplate;
+  created_at:        string;   // ISO 8601
+  interest_category: string;   // e.g. "게임"
+  harness_total:     number;   // 총 빈칸(Harness) 수
+  harness_filled:    number;   // 채운 빈칸 수
+}
+
 // ── RED FLAG ──────────────────────────────────────────────────────────────
 
 export type Severity = "HIGH" | "MID";

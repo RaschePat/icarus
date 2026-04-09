@@ -5,7 +5,8 @@ import CareerIdentityBadge from "@/components/CareerIdentityBadge";
 import SessionReportView from "@/components/SessionReportView";
 import RedFlagList from "@/components/RedFlagList";
 import InterestProfileCard from "@/components/InterestProfileCard";
-import { getDemoProfile, getDemoSessions, DEMO_REDFLAGS, DEMO_STUDENTS } from "@/lib/demo";
+import MicroProjectList from "@/components/MicroProjectList";
+import { getDemoProfile, getDemoSessions, getDemoProjects, DEMO_REDFLAGS, DEMO_STUDENTS } from "@/lib/demo";
 
 interface PageProps {
   params: Promise<{ userId: string }>;
@@ -25,6 +26,7 @@ export default async function StudentDetailPage({ params }: PageProps) {
   const { userId } = await params;
   const profile  = getDemoProfile(userId);
   const sessions = getDemoSessions(userId);
+  const projects = getDemoProjects(userId);
   const redflags = DEMO_REDFLAGS.filter((r) => r.user_id === userId);
   const classAvg = calcClassAvg();
   const student  = DEMO_STUDENTS.find((s) => s.user_id === userId);
@@ -106,6 +108,12 @@ export default async function StudentDetailPage({ params }: PageProps) {
           <div className="card">
             <p className="section-title">세션별 분석 리포트</p>
             <SessionReportView sessions={sessions} />
+          </div>
+
+          {/* 마이크로 프로젝트 목록 */}
+          <div className="card">
+            <p className="section-title">마이크로 프로젝트</p>
+            <MicroProjectList projects={projects} />
           </div>
         </div>
 

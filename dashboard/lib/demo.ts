@@ -1,4 +1,4 @@
-import type { StudentSummary, RedFlag, Session, UserProfile, InterestProfile } from "./types";
+import type { StudentSummary, RedFlag, Session, UserProfile, InterestProfile, MicroProject } from "./types";
 
 // ── 학생 요약 목록 ────────────────────────────────────────────────────────
 
@@ -210,6 +210,35 @@ export const DEMO_INTEREST_PROFILES: Record<string, InterestProfile> = {
   },
 };
 
+// ── 마이크로 프로젝트 샘플 데이터 ─────────────────────────────────────────
+
+export const DEMO_MICRO_PROJECTS: Record<string, MicroProject[]> = {
+  u1: [
+    { project_id: "p1-1", name: "game-score-board", template: "java",   created_at: "2026-04-02T09:10:00Z", interest_category: "게임", harness_total: 4, harness_filled: 4 },
+    { project_id: "p1-2", name: "algorithm-quiz",   template: "java",   created_at: "2026-04-04T09:15:00Z", interest_category: "게임", harness_total: 3, harness_filled: 3 },
+    { project_id: "p1-3", name: "dungeon-map",       template: "python", created_at: "2026-04-07T09:20:00Z", interest_category: "게임", harness_total: 5, harness_filled: 3 },
+  ],
+  u2: [
+    { project_id: "p2-1", name: "style-recommender", template: "node",   created_at: "2026-04-03T10:10:00Z", interest_category: "패션", harness_total: 3, harness_filled: 3 },
+    { project_id: "p2-2", name: "fashion-filter",    template: "python", created_at: "2026-04-08T10:20:00Z", interest_category: "패션", harness_total: 4, harness_filled: 1 },
+  ],
+  u3: [
+    { project_id: "p3-1", name: "patient-predictor", template: "python", created_at: "2026-04-01T11:10:00Z", interest_category: "의료", harness_total: 6, harness_filled: 6 },
+    { project_id: "p3-2", name: "med-data-cleaner",  template: "python", created_at: "2026-04-05T11:15:00Z", interest_category: "의료", harness_total: 4, harness_filled: 4 },
+  ],
+  u4: [
+    { project_id: "p4-1", name: "hello-world",       template: "python", created_at: "2026-04-03T14:05:00Z", interest_category: "기타", harness_total: 2, harness_filled: 0 },
+  ],
+  u5: [
+    { project_id: "p5-1", name: "cart-service",      template: "node",   created_at: "2026-04-04T09:10:00Z", interest_category: "커머스", harness_total: 5, harness_filled: 5 },
+    { project_id: "p5-2", name: "ab-test-tool",      template: "python", created_at: "2026-04-08T09:20:00Z", interest_category: "커머스", harness_total: 3, harness_filled: 2 },
+  ],
+  u6: [
+    { project_id: "p6-1", name: "design-system-demo", template: "node",  created_at: "2026-04-05T13:10:00Z", interest_category: "패션", harness_total: 4, harness_filled: 4 },
+    { project_id: "p6-2", name: "style-component",    template: "node",  created_at: "2026-04-08T13:15:00Z", interest_category: "패션", harness_total: 3, harness_filled: 3 },
+  ],
+};
+
 // ── 유틸 ─────────────────────────────────────────────────────────────────
 
 export function getDemoStudent(userId: string): StudentSummary | undefined {
@@ -231,4 +260,8 @@ export function getDemoProfile(userId: string): UserProfile | undefined {
 
 export function getDemoSessions(userId: string): Session[] {
   return DEMO_SESSIONS[userId] ?? [];
+}
+
+export function getDemoProjects(userId: string): MicroProject[] {
+  return DEMO_MICRO_PROJECTS[userId] ?? [];
 }
