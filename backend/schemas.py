@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Any
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 # --- lesson_context ---
@@ -77,6 +77,14 @@ class ActivityLogResponse(BaseModel):
 
 # --- user_profile ---
 
+class InterestProfile(BaseModel):
+    """세션 누적 관심사 프로필."""
+    category_counts: dict[str, int] = Field(default_factory=dict)
+    top_category: str | None = None
+    keyword_freq: dict[str, int] = Field(default_factory=dict)
+    top_keywords: list[str] = Field(default_factory=list)
+
+
 class CumulativeAptitude(BaseModel):
     logic_avg: float
     planning_avg: float
@@ -89,6 +97,7 @@ class UserProfileResponse(BaseModel):
     cumulative_aptitude: CumulativeAptitude
     session_count: int
     career_identity: list[str]
+    interest_profile: InterestProfile = Field(default_factory=InterestProfile)
     last_updated: datetime
 
 

@@ -8,8 +8,22 @@ analyzer.py — 타임스탬프 기반 행동 패턴 분석
 """
 from __future__ import annotations
 
+import json
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+
+
+_INTEREST_CATEGORIES = [
+    "패션", "의료", "펫", "게임", "금융", "교육", "커머스", "음식", "기타"
+]
+
+_INTEREST_SYSTEM_PROMPT = f"""사용자의 코딩 학습 중 질문 목록을 분석해 관심사를 추출하세요.
+반드시 JSON만 응답하세요:
+{{
+  "category": "{'/'.join(_INTEREST_CATEGORIES)} 중 하나",
+  "keywords": ["핵심 키워드 최대 3개"]
+}}"""
 
 
 # ── 결과 타입 ──────────────────────────────────────────────────────────────
@@ -143,3 +157,46 @@ def analyze_session(
         quiz_correct=quiz_correct,
         quiz_total=len(quiz_events),
     )
+
+
+# ── 관심사 분석 ────────────────────────────────────────────────────────────
+
+async def analyze_interests(prompt_summaries: list[str]) -> dict[str, object]:
+    """
+    WING_REQUEST 이벤트의 prompt_summary 목록을 Claude API로 분석합니다.
+
+    Args:
+        prompt_summaries: WING_REQUEST.data.prompt_summary 문자열 목록
+
+    Returns:
+        { "category": str, "keywords": list[str] }
+        API 호출 실패 시 { "category": "기타", "keywords": [] }
+    """
+    import anthropic  # 런타임 import — 미설치 환경에서 서버 기동 가능하도록
+
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key or not prompt_summaries:
+        return {"category": "기타", "keywords": []}
+
+    # 질문 목록을 하나의 텍스트로 결합 (최대 20개, 각 100자 이하)
+    combined = "\n".join(
+        f"- {s[:100]}" for s in prompt_summaries[:20]
+    )
+
+    client = anthropic.AsyncAnthropic(api_key=api_key)
+    try:
+        res = await client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=256,
+            system=_INTEREST_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": combined}],
+        )
+        raw = res.content[0].text
+        parsed = json.loads(raw)
+        category = parsed.get("category", "기타")
+        if category not in _INTEREST_CATEGORIES:
+            category = "기타"
+        keywords = [str(k) for k in parsed.get("keywords", [])[:3]]
+        return {"category": category, "keywords": keywords}
+    except Exception:
+        return {"category": "기타", "keywords": []}

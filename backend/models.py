@@ -39,4 +39,5 @@ class UserProfile(Base):
     data_avg: Mapped[float] = mapped_column(Float, default=0.0)
     session_count: Mapped[int] = mapped_column(Integer, default=0)
     career_identity: Mapped[list] = mapped_column(JSON, default=list)
+    interest_profile: Mapped[dict] = mapped_column(JSON, default=dict)
     last_updated: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())

@@ -20,7 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import ActivityLog, UserProfile
-from insight.analyzer import analyze_session, BehaviorMetrics
+from insight.analyzer import analyze_session, analyze_interests, BehaviorMetrics
 from insight.scorer import calculate_session_aptitude, update_profile_averages
 from insight.career import build_career_summary
 from insight.redflag import SessionSnapshot, detect_redflag, send_redflag_alert
@@ -82,6 +82,7 @@ async def run_analysis(
             logic_avg=0.0, planning_avg=0.0, ux_avg=0.0, data_avg=0.0,
             session_count=0,
             career_identity=[],
+            interest_profile={},
             last_updated=datetime.now(timezone.utc),
         )
         db.add(profile)
@@ -102,6 +103,21 @@ async def run_analysis(
     profile.data_avg     = updated_avg["data_avg"]
     profile.session_count += 1
     profile.last_updated  = datetime.now(timezone.utc)
+
+    # ── 6.5. 관심사 분석 및 interest_profile 업데이트 ─────────────────────
+    prompt_summaries = [
+        e.get("data", {}).get("prompt_summary", "")
+        for e in log_row.logs
+        if e.get("event_type") == "WING_REQUEST"
+        and e.get("data", {}).get("prompt_summary")
+    ]
+    if prompt_summaries:
+        interest = await analyze_interests(prompt_summaries)
+        profile.interest_profile = _update_interest_profile(
+            current=profile.interest_profile or {},
+            new_category=interest["category"],
+            new_keywords=interest["keywords"],
+        )
 
     # ── 7. career_identity 태그 재평가 ────────────────────────────────────
     career_summary = build_career_summary(
@@ -166,6 +182,36 @@ async def run_analysis(
 
 
 # ── 내부 헬퍼 ─────────────────────────────────────────────────────────────
+
+def _update_interest_profile(
+    current: dict,
+    new_category: str,
+    new_keywords: list[str],
+) -> dict:
+    """
+    기존 interest_profile에 새 세션 관심사를 누적합니다.
+
+    - category_counts: 카테고리별 등장 횟수
+    - top_category: 가장 많이 등장한 카테고리
+    - keyword_freq: 키워드별 등장 횟수
+    - top_keywords: 빈도 상위 5개 키워드
+    """
+    category_counts: dict[str, int] = dict(current.get("category_counts", {}))
+    category_counts[new_category] = category_counts.get(new_category, 0) + 1
+    top_category = max(category_counts, key=lambda k: category_counts[k])
+
+    keyword_freq: dict[str, int] = dict(current.get("keyword_freq", {}))
+    for kw in new_keywords:
+        keyword_freq[kw] = keyword_freq.get(kw, 0) + 1
+    top_keywords = sorted(keyword_freq, key=lambda k: keyword_freq[k], reverse=True)[:5]
+
+    return {
+        "category_counts": category_counts,
+        "top_category": top_category,
+        "keyword_freq": keyword_freq,
+        "top_keywords": top_keywords,
+    }
+
 
 def _count_errors(logs: list[dict]) -> int:
     return sum(
