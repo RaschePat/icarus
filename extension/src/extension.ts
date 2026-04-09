@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { WingPanelProvider } from "./wingPanel";
+import { WingPanelProvider, HarnessConfig } from "./wingPanel";
 import { McpClient } from "./mcpClient";
 import { ClaudeClient } from "./claudeClient";
 import { HintEngine } from "./hintEngine";
@@ -66,6 +66,39 @@ export async function activate(context: vscode.ExtensionContext) {
     })
   );
 
+  // ── 레슨 퀴즈 로드 Command ──────────────────────────────────────
+  context.subscriptions.push(
+    vscode.commands.registerCommand("wing.loadLesson", async () => {
+      const config   = vscode.workspace.getConfiguration("wing");
+      const lessonId: string = config.get("lessonId") ?? "";
+      if (!lessonId) {
+        vscode.window.showWarningMessage("Wing: wing.lessonId 설정이 필요합니다.");
+        return;
+      }
+      try {
+        const lesson = await fetchLesson(lessonId);
+        const pool = lesson.quiz_pool ?? [];
+        if (pool.length > 0) { panel.loadQuiz(pool); }
+        if (lesson.harness_config) { panel.setHarnessConfig(lesson.harness_config); }
+        vscode.window.showInformationMessage(`Wing: 레슨 로드 완료 (퀴즈 ${pool.length}문항).`);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        vscode.window.showErrorMessage(`Wing: 레슨 로드 실패 — ${msg}`);
+      }
+    })
+  );
+
+  // 활성화 시 자동 레슨 로드 (퀴즈 + harness_config)
+  const lessonId: string = vscode.workspace.getConfiguration("wing").get("lessonId") ?? "";
+  if (lessonId) {
+    fetchLesson(lessonId)
+      .then((lesson) => {
+        if (lesson.quiz_pool && lesson.quiz_pool.length > 0) { panel.loadQuiz(lesson.quiz_pool); }
+        if (lesson.harness_config) { panel.setHarnessConfig(lesson.harness_config); }
+      })
+      .catch(() => { /* 무시 — 수동 로드로 재시도 가능 */ });
+  }
+
   // ── 정리 ───────────────────────────────────────────────────────
   context.subscriptions.push(
     new vscode.Disposable(() => {
@@ -73,6 +106,20 @@ export async function activate(context: vscode.ExtensionContext) {
       mcp.dispose();
     })
   );
+}
+
+/** /v1/lesson/{lessonId} 전체를 가져옵니다 */
+async function fetchLesson(lessonId: string): Promise<{
+  quiz_pool?: Array<{ id: string; question: string; options: string[]; answer_index: number }>;
+  harness_config?: HarnessConfig;
+}> {
+  const config  = vscode.workspace.getConfiguration("wing");
+  const baseUrl: string = config.get("backendUrl") ?? "http://localhost:8000";
+  const url = `${baseUrl}/v1/lesson/${encodeURIComponent(lessonId)}`;
+
+  const res = await fetch(url);
+  if (!res.ok) { throw new Error(`HTTP ${res.status}`); }
+  return res.json() as Promise<{ quiz_pool?: Array<{ id: string; question: string; options: string[]; answer_index: number }>; harness_config?: HarnessConfig; }>;
 }
 
 export function deactivate() {}

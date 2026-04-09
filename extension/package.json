@@ -34,6 +34,10 @@
       {
         "command": "wing.clearChat",
         "title": "Wing: 대화 초기화"
+      },
+      {
+        "command": "wing.loadLesson",
+        "title": "Wing: 레슨 퀴즈 로드"
       }
     ],
     "configuration": {
@@ -58,6 +62,16 @@
           "type": "string",
           "default": "http://localhost:8000/v1",
           "description": "ICARUS 백엔드 API 베이스 URL"
+        },
+        "wing.lessonId": {
+          "type": "string",
+          "default": "",
+          "description": "현재 수업의 lesson_id (퀴즈 자동 로드에 사용)"
+        },
+        "wing.backendUrl": {
+          "type": "string",
+          "default": "http://localhost:8000",
+          "description": "ICARUS 백엔드 베이스 URL"
         }
       }
     }

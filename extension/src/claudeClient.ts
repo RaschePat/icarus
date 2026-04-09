@@ -104,4 +104,46 @@ export class ClaudeClient {
 
     return message;
   }
+
+  /**
+   * 사용자 의도에서 프로젝트 정보를 추출합니다.
+   * @returns { name, template, description }
+   */
+  async analyzeProjectIntent(userText: string): Promise<{
+    name: string;
+    template: string;
+    description: string;
+  }> {
+    const client = this._getClient();
+    let raw: string;
+    try {
+      const res = await client.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 256,
+        system: `사용자 입력에서 만들고 싶은 프로젝트 정보를 추출하세요.
+반드시 JSON만 응답하세요:
+{ "name": "프로젝트명(소문자 영문·숫자·하이픈만, 예: todo-app)", "template": "java|python|node", "description": "한 문장 한국어 설명" }`,
+        messages: [{ role: "user", content: userText }],
+      });
+      raw = (res.content[0] as Anthropic.TextBlock).text;
+    } catch (e) {
+      throw new Error(`프로젝트 분석 실패 — ${(e as Error).message}`);
+    }
+
+    try {
+      const p = JSON.parse(raw);
+      const validTemplates = ["java", "python", "node"];
+      return {
+        name: String(p.name ?? "my-project")
+          .replace(/[^a-z0-9-]/g, "-")
+          .replace(/^-+|-+$/g, "")
+          .slice(0, 40) || "my-project",
+        template: validTemplates.includes(p.template) ? p.template : "python",
+        description: String(p.description ?? ""),
+      };
+    } catch {
+      // JSON 파싱 실패 시 기본값
+      return { name: "my-project", template: "python", description: userText.slice(0, 60) };
+    }
+  }
 }

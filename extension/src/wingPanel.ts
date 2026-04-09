@@ -2,14 +2,30 @@ import * as vscode from "vscode";
 import { ClaudeClient } from "./claudeClient";
 import { McpClient } from "./mcpClient";
 import { HintEngine } from "./hintEngine";
+import { QuizEngine, QuizItem } from "./quizEngine";
 
 export type Message = { role: "user" | "wing" | "system"; text: string };
+
+export interface HarnessLogic {
+  logic_id: string;
+  file_path?: string;      // 미지정 시 템플릿별 기본 파일 사용
+  search_pattern: string;
+  match_strategy?: string;
+}
+export interface HarnessConfig {
+  target_logic: HarnessLogic[];
+}
+
+type PendingProject = { name: string; template: string; description: string };
 
 export class WingPanelProvider implements vscode.WebviewViewProvider {
   public static readonly VIEW_ID = "wing.chatPanel";
 
   private _view?: vscode.WebviewView;
   private _messages: Message[] = [];
+  private _quiz = new QuizEngine();
+  private _harnessConfig: HarnessConfig | null = null;
+  private _pendingProject: PendingProject | null = null;
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
@@ -43,8 +59,33 @@ export class WingPanelProvider implements vscode.WebviewViewProvider {
           this._messages = [];
           this._postMessages();
           break;
+        case "quizSubmit":
+          await this._handleQuizSubmit(msg.selectedIndex);
+          break;
+        case "quizNext":
+          this._postQuiz();
+          break;
+        case "projectConfirm":
+          await this._handleProjectConfirm();
+          break;
+        case "projectCancel":
+          this._pendingProject = null;
+          this._view?.webview.postMessage({ type: "projectProposalDismiss" });
+          this._addMessage({ role: "wing", text: "프로젝트 생성을 취소했습니다. 언제든 다시 말해주세요!" });
+          break;
       }
     });
+  }
+
+  /** lesson_context의 harness_config를 저장 */
+  public setHarnessConfig(config: HarnessConfig): void {
+    this._harnessConfig = config;
+  }
+
+  /** lesson_context의 quiz_pool을 로드하고 WebView에 첫 문항 전송 */
+  public loadQuiz(pool: QuizItem[]): void {
+    this._quiz.load(pool);
+    this._postQuiz();
   }
 
   // 외부에서 시스템 메시지 추가 (힌트 엔진 등)
@@ -60,6 +101,12 @@ export class WingPanelProvider implements vscode.WebviewViewProvider {
   private async _handleUserMessage(text: string) {
     this._addMessage({ role: "user", text });
 
+    // 마이크로 프로젝트 생성 의도 감지
+    if (/만들(고\s*싶|래|어볼까|겠어)/.test(text)) {
+      await this._handleProjectIntent(text);
+      return;
+    }
+
     // 요청 카테고리 분류 및 WING_REQUEST 로그는 ClaudeClient 내부에서 처리
     const reply = await this._claude.chat(text, this._messages);
     this._addMessage({ role: "wing", text: reply });
@@ -69,6 +116,74 @@ export class WingPanelProvider implements vscode.WebviewViewProvider {
     if (hint) {
       this._addMessage({ role: "system", text: `[Wing 힌트 ${hint.level}단계] ${hint.message}` });
     }
+  }
+
+  private async _handleProjectIntent(text: string) {
+    this._addMessage({ role: "system", text: "프로젝트 아이디어를 분석 중…" });
+    try {
+      const proposal = await this._claude.analyzeProjectIntent(text);
+      this._pendingProject = proposal;
+      this._view?.webview.postMessage({ type: "projectProposal", data: proposal });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      this._addMessage({ role: "wing", text: `프로젝트 분석에 실패했습니다: ${msg}` });
+    }
+  }
+
+  private async _handleProjectConfirm() {
+    const proj = this._pendingProject;
+    this._pendingProject = null;
+    this._view?.webview.postMessage({ type: "projectProposalDismiss" });
+    if (!proj) { return; }
+
+    const config = vscode.workspace.getConfiguration("wing");
+    const projectRoot: string = config.get("projectRoot") ?? "";
+    if (!projectRoot) {
+      this._addMessage({ role: "wing", text: "wing.projectRoot 설정이 필요합니다." });
+      return;
+    }
+
+    const projectPath = `${projectRoot}/${proj.name}`;
+    this._addMessage({ role: "system", text: `📁 프로젝트 생성 중: ${projectPath}` });
+
+    try {
+      await this._mcp.setupProject(projectPath, proj.template);
+      this._addMessage({ role: "wing", text: `✅ '${proj.name}' 프로젝트가 생성됐습니다!\n경로: ${projectPath}` });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      this._addMessage({ role: "wing", text: `❌ 프로젝트 생성 실패: ${msg}` });
+      return;
+    }
+
+    // harness_config 기반 빈칸 주입
+    const harness = this._harnessConfig;
+    if (!harness || harness.target_logic.length === 0) {
+      this._addMessage({ role: "wing", text: "프로젝트가 준비됐습니다! 이제 코딩을 시작하세요 🚀" });
+      return;
+    }
+
+    this._addMessage({ role: "system", text: "🔧 학습 빈칸(Harness) 주입 중…" });
+    const defaultFile = proj.template === "java" ? "src/Main.java"
+      : proj.template === "node" ? "index.js" : "main.py";
+
+    let injected = 0;
+    for (const logic of harness.target_logic) {
+      try {
+        await this._mcp.injectHarness(
+          logic.file_path ?? defaultFile,
+          logic.logic_id,
+          logic.search_pattern,
+          logic.match_strategy ?? "first_occurrence"
+        );
+        injected++;
+      } catch {
+        // 개별 실패는 무시하고 카운트로 보고
+      }
+    }
+    this._addMessage({
+      role: "wing",
+      text: `✅ 빈칸 주입 완료 (${injected}/${harness.target_logic.length}개)\nWing 미션을 시작하세요! 🚀`,
+    });
   }
 
   private async _handleFlightTest(filePath: string, command: string) {
@@ -99,6 +214,30 @@ export class WingPanelProvider implements vscode.WebviewViewProvider {
     if (hint) {
       this._addMessage({ role: "system", text: `[Wing 힌트 ${hint.level}단계] ${hint.message}` });
     }
+  }
+
+  private async _handleQuizSubmit(selectedIndex: number) {
+    const result = this._quiz.submit(selectedIndex);
+
+    // QUIZ_RESULT 로그 기록
+    await this._mcp.writeActivityLog({
+      event_type: "QUIZ_RESULT",
+      quiz_id:      result.quiz_id,
+      is_correct:   result.is_correct,
+      attempt_count: result.attempt_count,
+    });
+
+    // 정답이면 다음 문항으로 자동 이동
+    if (result.is_correct) {
+      this._quiz.next();
+    }
+
+    this._postQuiz();
+  }
+
+  private _postQuiz() {
+    const data = this._quiz.getDisplay();
+    this._view?.webview.postMessage({ type: "quiz", data });
   }
 
   private _addMessage(msg: Message) {
@@ -199,6 +338,124 @@ export class WingPanelProvider implements vscode.WebviewViewProvider {
       opacity: 0.7;
     }
 
+    /* ── 프로젝트 제안 카드 ── */
+    .project-card {
+      background: var(--vscode-editor-inactiveSelectionBackground);
+      border: 1px solid var(--vscode-button-background);
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin: 4px 12px;
+    }
+    .project-card-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--vscode-button-background);
+      margin-bottom: 6px;
+    }
+    .project-card-name {
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .project-card-desc {
+      font-size: 12px;
+      color: var(--vscode-foreground);
+      opacity: 0.85;
+      margin-bottom: 4px;
+      line-height: 1.4;
+    }
+    .project-card-meta {
+      font-size: 10px;
+      color: var(--vscode-descriptionForeground);
+      margin-bottom: 10px;
+    }
+    .project-card-actions { display: flex; gap: 6px; }
+    .btn-confirm {
+      flex: 1;
+      padding: 5px 0;
+      background: var(--vscode-button-background);
+      color: var(--vscode-button-foreground);
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .btn-confirm:hover { background: var(--vscode-button-hoverBackground); }
+    .btn-cancel {
+      flex: 1;
+      padding: 5px 0;
+      background: none;
+      color: var(--vscode-descriptionForeground);
+      border: 1px solid var(--vscode-input-border);
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .btn-cancel:hover { background: var(--vscode-toolbar-hoverBackground); }
+
+    /* ── 퀴즈 패널 ── */
+    .quiz-panel {
+      padding: 10px 12px;
+      border-top: 1px solid var(--vscode-sideBarSectionHeader-border);
+      background: var(--vscode-sideBarSectionHeader-background);
+      display: none;
+    }
+    .quiz-panel.visible { display: block; }
+    .quiz-header {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--vscode-descriptionForeground);
+      margin-bottom: 6px;
+    }
+    .quiz-question {
+      font-size: 12px;
+      line-height: 1.5;
+      margin-bottom: 8px;
+      color: var(--vscode-foreground);
+    }
+    .quiz-options { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+    .quiz-option {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      border: 1px solid var(--vscode-input-border);
+      background: var(--vscode-input-background);
+      color: var(--vscode-foreground);
+      transition: background 0.1s;
+    }
+    .quiz-option:hover { background: var(--vscode-list-hoverBackground); }
+    .quiz-option.correct { border-color: #4caf50; background: rgba(76,175,80,0.15); color: #4caf50; }
+    .quiz-option.wrong   { border-color: #f44336; background: rgba(244,67,54,0.15); color: #f44336; }
+    .quiz-option.answer  { border-color: #4caf50; }
+    .quiz-option input[type="radio"] { accent-color: var(--vscode-button-background); }
+    .quiz-footer { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+    .quiz-progress { font-size: 10px; color: var(--vscode-descriptionForeground); }
+    .quiz-feedback { font-size: 11px; font-weight: 600; }
+    .quiz-feedback.ok  { color: #4caf50; }
+    .quiz-feedback.ng  { color: #f44336; }
+    .btn-quiz {
+      padding: 4px 10px;
+      background: var(--vscode-button-background);
+      color: var(--vscode-button-foreground);
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 11px;
+    }
+    .btn-quiz:hover { background: var(--vscode-button-hoverBackground); }
+    .quiz-complete {
+      text-align: center;
+      padding: 8px 0;
+      font-size: 13px;
+      font-weight: 700;
+      color: #4caf50;
+    }
+
     /* ── 비행테스트 버튼 ── */
     .flight-bar {
       padding: 8px 12px;
@@ -291,6 +548,12 @@ export class WingPanelProvider implements vscode.WebviewViewProvider {
     <div class="bubble system">Wing이 준비됐습니다. 오늘 배운 내용을 구현해보세요!</div>
   </div>
 
+  <!-- 퀴즈 패널 -->
+  <div class="quiz-panel" id="quizPanel">
+    <div class="quiz-header" id="quizHeader">📝 퀴즈</div>
+    <div id="quizBody"></div>
+  </div>
+
   <!-- 비행테스트 버튼 -->
   <div class="flight-bar">
     <button class="btn-flight" id="btnFlight">🚀 비행테스트</button>
@@ -316,10 +579,122 @@ export class WingPanelProvider implements vscode.WebviewViewProvider {
     const inputFilePath = document.getElementById('inputFilePath');
     const inputCommand  = document.getElementById('inputCommand');
 
+    const quizPanel  = document.getElementById('quizPanel');
+    const quizHeader = document.getElementById('quizHeader');
+    const quizBody   = document.getElementById('quizBody');
+
     // Extension → WebView 메시지
+    let pendingProposal = null;
+
     window.addEventListener('message', ({ data }) => {
-      if (data.type === 'messages') renderMessages(data.data);
+      if (data.type === 'messages')              renderMessages(data.data);
+      if (data.type === 'quiz')                  renderQuiz(data.data);
+      if (data.type === 'projectProposal')       { pendingProposal = data.data; renderProjectCard(); }
+      if (data.type === 'projectProposalDismiss') { pendingProposal = null; document.getElementById('projectProposalCard')?.remove(); }
     });
+
+    function renderProjectCard() {
+      document.getElementById('projectProposalCard')?.remove();
+      if (!pendingProposal) { return; }
+      const p = pendingProposal;
+      const wrap = document.createElement('div');
+      wrap.id = 'projectProposalCard';
+      wrap.innerHTML = \`<div class="project-card">
+        <div class="project-card-title">이런 프로젝트 만들어볼까요? ✨</div>
+        <div class="project-card-name">📁 \${p.name}</div>
+        <div class="project-card-desc">\${p.description}</div>
+        <div class="project-card-meta">템플릿: \${p.template}</div>
+        <div class="project-card-actions">
+          <button class="btn-confirm" id="btnProjConfirm">✅ 만들기</button>
+          <button class="btn-cancel"  id="btnProjCancel">취소</button>
+        </div>
+      </div>\`;
+      chatArea.appendChild(wrap);
+      chatArea.scrollTop = chatArea.scrollHeight;
+      document.getElementById('btnProjConfirm').addEventListener('click', () => {
+        pendingProposal = null;
+        wrap.remove();
+        vscode.postMessage({ type: 'projectConfirm' });
+      });
+      document.getElementById('btnProjCancel').addEventListener('click', () => {
+        pendingProposal = null;
+        wrap.remove();
+        vscode.postMessage({ type: 'projectCancel' });
+      });
+    }
+
+    function renderQuiz(d) {
+      if (!d) { quizPanel.classList.remove('visible'); return; }
+      quizPanel.classList.add('visible');
+      quizHeader.textContent = '📝 퀴즈 ' + d.current + ' / ' + d.total;
+
+      if (d.complete) {
+        quizBody.innerHTML = '<div class="quiz-complete">🎉 모든 퀴즈 완료!</div>';
+        return;
+      }
+
+      // 선택지 렌더
+      const optionsHtml = d.options.map((opt, i) => {
+        let cls = 'quiz-option';
+        if (d.answered) {
+          if (i === d.answer_index) cls += ' answer';
+          if (i === d.selected_index && d.is_correct)  cls += ' correct';
+          if (i === d.selected_index && !d.is_correct) cls += ' wrong';
+        }
+        const disabled = d.answered ? 'disabled' : '';
+        const checked  = d.selected_index === i ? 'checked' : '';
+        return \`<label class="\${cls}">
+          <input type="radio" name="quiz_opt" value="\${i}" \${checked} \${disabled} />
+          \${opt}
+        </label>\`;
+      }).join('');
+
+      const feedbackHtml = d.answered
+        ? \`<span class="quiz-feedback \${d.is_correct ? 'ok' : 'ng'}">\${d.is_correct ? '✅ 정답' : '❌ 오답 (재시도 가능)'}</span>\`
+        : '';
+
+      const btnHtml = d.answered && d.is_correct
+        ? \`<button class="btn-quiz" id="btnQuizNext">\${d.current < d.total ? '다음 문제 →' : '완료'}</button>\`
+        : d.answered
+        ? \`<button class="btn-quiz" id="btnQuizRetry">다시 시도</button>\`
+        : \`<button class="btn-quiz" id="btnQuizSubmit">제출</button>\`;
+
+      quizBody.innerHTML = \`
+        <p class="quiz-question">\${d.question}</p>
+        <div class="quiz-options">\${optionsHtml}</div>
+        <div class="quiz-footer">
+          <span class="quiz-progress">시도 \${d.attempt_count}회</span>
+          \${feedbackHtml}
+          \${btnHtml}
+        </div>\`;
+
+      document.getElementById('btnQuizSubmit')?.addEventListener('click', () => {
+        const sel = quizBody.querySelector('input[name="quiz_opt"]:checked');
+        if (!sel) { return; }
+        vscode.postMessage({ type: 'quizSubmit', selectedIndex: Number(sel.value) });
+      });
+      document.getElementById('btnQuizNext')?.addEventListener('click', () => {
+        vscode.postMessage({ type: 'quizNext' });
+      });
+      document.getElementById('btnQuizRetry')?.addEventListener('click', () => {
+        // 선택 초기화 후 재시도 — 단순히 선택 해제
+        quizBody.querySelectorAll('input[name="quiz_opt"]').forEach(el => {
+          el.disabled = false;
+          el.checked  = false;
+        });
+        quizBody.querySelectorAll('.quiz-option').forEach(el => {
+          el.classList.remove('correct', 'wrong', 'answer');
+        });
+        const footer = quizBody.querySelector('.quiz-footer');
+        footer.innerHTML = \`<span class="quiz-progress">시도 \${d.attempt_count}회</span>
+          <button class="btn-quiz" id="btnQuizSubmit">제출</button>\`;
+        document.getElementById('btnQuizSubmit').addEventListener('click', () => {
+          const sel2 = quizBody.querySelector('input[name="quiz_opt"]:checked');
+          if (!sel2) { return; }
+          vscode.postMessage({ type: 'quizSubmit', selectedIndex: Number(sel2.value) });
+        });
+      });
+    }
 
     function renderMessages(messages) {
       chatArea.innerHTML = '';
@@ -344,6 +719,8 @@ export class WingPanelProvider implements vscode.WebviewViewProvider {
         chatArea.appendChild(wrap);
       });
       chatArea.scrollTop = chatArea.scrollHeight;
+      // 메시지 재렌더 후에도 제안 카드 유지
+      if (pendingProposal) { renderProjectCard(); }
     }
 
     function setLoading(on) {
