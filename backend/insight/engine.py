@@ -166,7 +166,10 @@ async def run_analysis(
         {"subject": "Data",     "score": round(updated_avg["data_avg"],     1)},
     ]
 
-    ai_comment = _build_ai_comment(metrics, career_summary, redflag_result)
+    ai_comment = await _build_ai_comment(
+        metrics, career_summary, redflag_result,
+        interest_profile=profile.interest_profile or {},
+    )
 
     return AnalysisReport(
         session_id=session_id,
@@ -233,15 +236,14 @@ def _get_focused_seconds(logs: list[dict], timestamp_start: str) -> float:
     return m.focused_seconds
 
 
-def _build_ai_comment(
+def _build_fallback_comment(
     metrics: BehaviorMetrics,
     career_summary: dict,
     redflag: dict | None,
 ) -> str:
-    """Insight 리포트용 텍스트 코멘트 생성."""
+    """Gemini API 호출 실패 시 사용하는 하드코딩 폴백 코멘트."""
     parts: list[str] = []
 
-    # 집중도 코멘트
     focus_pct = round(metrics.focus_ratio * 100, 1)
     if focus_pct >= 80:
         parts.append(f"집중도 {focus_pct}%로 매우 우수한 세션이었습니다.")
@@ -250,14 +252,12 @@ def _build_ai_comment(
     else:
         parts.append(f"집중도 {focus_pct}%로 이탈 시간이 많았습니다. 환경 점검을 권장합니다.")
 
-    # 자립도 코멘트
     autonomy_pct = round(metrics.autonomy_score * 100, 1)
     if autonomy_pct >= 80:
         parts.append(f"자립도 {autonomy_pct}%로 스스로 코드를 작성하는 비율이 높습니다.")
     elif metrics.paste_ratio > 0.5:
         parts.append(f"붙여넣기 비율이 {round(metrics.paste_ratio*100,1)}%입니다. 직접 작성 훈련이 필요합니다.")
 
-    # career_identity
     tags = career_summary.get("career_identity", [])
     if tags:
         parts.append(f"적성 태그 {' '.join(tags)} 가 부여되었습니다.")
@@ -265,8 +265,73 @@ def _build_ai_comment(
         remaining = 5 - career_summary.get("session_count", 0)
         parts.append(f"적성 태그 부여까지 {remaining}회 세션이 더 필요합니다.")
 
-    # RED_FLAG
     if redflag:
         parts.append(f"⚠️ RED_FLAG ({redflag['severity']}): {redflag['cause']} 원인으로 멘토 알림이 발송되었습니다.")
 
     return " ".join(parts)
+
+
+async def _build_ai_comment(
+    metrics: BehaviorMetrics,
+    career_summary: dict,
+    redflag: dict | None,
+    interest_profile: dict,
+) -> str:
+    """
+    Gemini 1.5 Flash로 멘토용 자연어 코멘트를 생성합니다.
+    API 호출 실패 시 _build_fallback_comment()로 폴백합니다.
+    """
+    import os
+
+    api_key = os.getenv("GEMINI_API_KEY", "")
+    if not api_key:
+        return _build_fallback_comment(metrics, career_summary, redflag)
+
+    try:
+        import google.generativeai as genai  # 런타임 import — 미설치 환경에서 서버 기동 가능
+    except ImportError:
+        return _build_fallback_comment(metrics, career_summary, redflag)
+
+    # ── 프롬프트 데이터 구성 ───────────────────────────────────────────────
+    focus_pct      = round(metrics.focus_ratio * 100, 1)
+    autonomy_pct   = round(metrics.autonomy_score * 100, 1)
+    paste_pct      = round(metrics.paste_ratio * 100, 1)
+    tags           = career_summary.get("career_identity", [])
+    top_category   = interest_profile.get("top_category") or "미분류"
+    top_keywords   = interest_profile.get("top_keywords", [])
+
+    redflag_text = "없음"
+    if redflag:
+        redflag_text = f"{redflag['severity']} ({redflag['cause']})"
+
+    prompt = f"""당신은 IT 부트캠프 강사를 돕는 학습 분석 AI입니다.
+아래 수강생 세션 데이터를 바탕으로 강사가 참고할 수 있는 자연어 코멘트를 한국어 2~3문장으로 작성하세요.
+수치를 그대로 나열하지 말고, 학습 상태·강점·주의사항을 통합해 서술하세요.
+
+## 세션 지표
+- 집중도: {focus_pct}%
+- 자립도(직접 작성 비율): {autonomy_pct}%
+- 붙여넣기 비율: {paste_pct}%
+- 직접 시도(HARNESS_ERROR) 횟수: {metrics.harness_error_count}회
+- 퀴즈 정답: {metrics.quiz_correct}/{metrics.quiz_total}문제
+
+## 적성 및 관심사
+- 누적 적성 태그: {', '.join(tags) if tags else '미부여'}
+- 관심 도메인: {top_category}
+- 주요 키워드: {', '.join(top_keywords) if top_keywords else '없음'}
+
+## 이탈 위험
+- RED_FLAG: {redflag_text}
+
+코멘트:"""
+
+    try:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        response = await model.generate_content_async(prompt)
+        comment = response.text.strip()
+        if not comment:
+            raise ValueError("빈 응답")
+        return comment
+    except Exception:
+        return _build_fallback_comment(metrics, career_summary, redflag)
