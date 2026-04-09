@@ -13,6 +13,15 @@ export interface RadarPoint {
   fullMark: number;
 }
 
+// ── 관심사 프로필 ─────────────────────────────────────────────────────────
+
+export interface InterestProfile {
+  category_counts: Record<string, number>;  // { "게임": 3, "패션": 1, ... }
+  top_category:    string | null;
+  keyword_freq:    Record<string, number>;  // { "RPG": 2, "인벤토리": 1, ... }
+  top_keywords:    string[];                // 빈도 상위 5개
+}
+
 // ── 사용자 프로필 ─────────────────────────────────────────────────────────
 
 export interface UserProfile {
@@ -20,6 +29,7 @@ export interface UserProfile {
   cumulative_aptitude: AptitudeScores;
   session_count:      number;
   career_identity:    string[];   // e.g. ["#Logic", "#Planning"]
+  interest_profile?:  InterestProfile;
   last_updated:       string;     // ISO 8601
 }
 

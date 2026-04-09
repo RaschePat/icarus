@@ -1,4 +1,4 @@
-import type { StudentSummary, RedFlag, Session, UserProfile } from "./types";
+import type { StudentSummary, RedFlag, Session, UserProfile, InterestProfile } from "./types";
 
 // ── 학생 요약 목록 ────────────────────────────────────────────────────────
 
@@ -169,6 +169,47 @@ export const DEMO_SESSIONS: Record<string, Session[]> = {
   ],
 };
 
+// ── 관심사 프로필 샘플 데이터 ─────────────────────────────────────────────
+
+export const DEMO_INTEREST_PROFILES: Record<string, InterestProfile> = {
+  u1: {
+    category_counts: { 게임: 5, 교육: 2, 기타: 1 },
+    top_category: "게임",
+    keyword_freq:  { 알고리즘: 4, 자료구조: 3, 최적화: 2, 그래프: 1, 탐색: 1 },
+    top_keywords:  ["알고리즘", "자료구조", "최적화", "그래프", "탐색"],
+  },
+  u2: {
+    category_counts: { 패션: 4, 커머스: 2 },
+    top_category: "패션",
+    keyword_freq:  { "UI 컴포넌트": 5, 브랜드: 3, 색상: 2, 스타일가이드: 2, 레이아웃: 1 },
+    top_keywords:  ["UI 컴포넌트", "브랜드", "색상", "스타일가이드", "레이아웃"],
+  },
+  u3: {
+    category_counts: { 의료: 6, 금융: 2, 기타: 1 },
+    top_category: "의료",
+    keyword_freq:  { 예측모델: 5, 통계: 4, 데이터정제: 3, 시각화: 2, 분류: 1 },
+    top_keywords:  ["예측모델", "통계", "데이터정제", "시각화", "분류"],
+  },
+  u4: {
+    category_counts: { 기타: 3, 게임: 1 },
+    top_category: "기타",
+    keyword_freq:  { 입출력: 2, 반복문: 1 },
+    top_keywords:  ["입출력", "반복문"],
+  },
+  u5: {
+    category_counts: { 커머스: 5, 교육: 2, 패션: 1 },
+    top_category: "커머스",
+    keyword_freq:  { "서비스플로우": 4, 전환율: 3, 기획서: 3, "A/B테스트": 2, 와이어프레임: 1 },
+    top_keywords:  ["서비스플로우", "전환율", "기획서", "A/B테스트", "와이어프레임"],
+  },
+  u6: {
+    category_counts: { 패션: 5, 커머스: 3, 교육: 1 },
+    top_category: "패션",
+    keyword_freq:  { 디자인시스템: 5, 접근성: 4, 컴포넌트: 3, "반응형": 2, 애니메이션: 1 },
+    top_keywords:  ["디자인시스템", "접근성", "컴포넌트", "반응형", "애니메이션"],
+  },
+};
+
 // ── 유틸 ─────────────────────────────────────────────────────────────────
 
 export function getDemoStudent(userId: string): StudentSummary | undefined {
@@ -183,6 +224,7 @@ export function getDemoProfile(userId: string): UserProfile | undefined {
     cumulative_aptitude: s.aptitude,
     session_count: s.session_count,
     career_identity: s.career_identity,
+    interest_profile: DEMO_INTEREST_PROFILES[userId],
     last_updated: s.last_updated,
   };
 }

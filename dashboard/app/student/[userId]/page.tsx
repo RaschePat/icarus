@@ -4,6 +4,7 @@ import AptitudeRadarChart, { AptitudeBarSummary } from "@/components/AptitudeRad
 import CareerIdentityBadge from "@/components/CareerIdentityBadge";
 import SessionReportView from "@/components/SessionReportView";
 import RedFlagList from "@/components/RedFlagList";
+import InterestProfileCard from "@/components/InterestProfileCard";
 import { getDemoProfile, getDemoSessions, DEMO_REDFLAGS, DEMO_STUDENTS } from "@/lib/demo";
 
 interface PageProps {
@@ -136,6 +137,11 @@ export default async function StudentDetailPage({ params }: PageProps) {
           {/* RED FLAG */}
           {redflags.length > 0 && (
             <RedFlagList redflags={redflags} />
+          )}
+
+          {/* 관심사 프로필 */}
+          {profile.interest_profile && (
+            <InterestProfileCard interest={profile.interest_profile} />
           )}
 
           {/* career_identity 설명 */}
