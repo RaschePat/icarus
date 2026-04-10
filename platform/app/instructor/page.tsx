@@ -1,232 +1,165 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { v4 as uuidv4 } from "uuid";
+import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import SttPanel from "@/components/instructor/SttPanel";
-import KnowledgeCardEditor from "@/components/instructor/KnowledgeCardEditor";
-import DeployButton from "@/components/instructor/DeployButton";
-import CurriculumPanel from "@/components/instructor/CurriculumPanel";
-import ClassOverview from "@/components/instructor/ClassOverview";
-import { activateQuiz, getMyCourses } from "@/lib/api";
-import type { LessonContext, AnalysisResult, Course } from "@/lib/types";
+import { useRouter } from "next/navigation";
+import { getMyCourses, getUnits, getSections } from "@/lib/api";
+import type { Course, Unit, Section } from "@/lib/types";
 
-function makeBlankLesson(instructorId = "instructor-001"): LessonContext {
-  return {
-    lesson_id: `lesson-${uuidv4().slice(0, 8)}`,
-    metadata: {
-      topic: "",
-      instructor_id: instructorId,
-      timestamp: new Date().toISOString(),
-      instructor_style: {
-        language: "java",
-        naming_convention: "camelCase",
-        comment_style: "Korean",
-        preferred_libraries: [],
-      },
-    },
-    knowledge_base: { keywords: [], core_concepts: [] },
-    harness_config: { target_logic: [], quiz_pool: [] },
-  };
-}
-
-function JsonPreview({ lesson }: { lesson: LessonContext }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="card">
-      <button
-        className="w-full flex items-center justify-between text-sm font-medium text-slate-300 hover:text-slate-100"
-        onClick={() => setOpen((o) => !o)}
-      >
-        <span>JSON 미리보기</span>
-        <span className="text-slate-500">{open ? "▲" : "▼"}</span>
-      </button>
-      {open && (
-        <pre className="mt-3 text-xs font-mono text-slate-400 bg-slate-950 rounded-lg p-3 overflow-auto max-h-80">
-          {JSON.stringify(lesson, null, 2)}
-        </pre>
-      )}
-    </div>
-  );
-}
-
-export default function InstructorConsolePage() {
+export default function InstructorPage() {
   const { data: session } = useSession();
   const token = (session?.user as { access_token?: string })?.access_token ?? "";
-  const userId = (session?.user as { user_id?: string })?.user_id ?? "instructor-001";
+  const router = useRouter();
 
-  // 배정된 과정 목록
   const [courses, setCourses] = useState<Course[]>([]);
-  const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
-  const [coursesLoading, setCoursesLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
 
-  // 강의 콘솔 상태
-  const [lesson, setLesson] = useState<LessonContext>(() => makeBlankLesson(userId));
-  const [quizActivating, setQuizActivating] = useState(false);
-  const [quizMsg, setQuizMsg] = useState("");
-  const [consoleOpen, setConsoleOpen] = useState(false);
+  // 펼쳐진 과정/단원 ID
+  const [expandedCourse, setExpandedCourse] = useState<number | null>(null);
+  const [expandedUnit, setExpandedUnit] = useState<number | null>(null);
 
-  // 배정 과정 로드
+  // 단원 / 섹션 캐시
+  const [unitMap, setUnitMap] = useState<Record<number, Unit[]>>({});
+  const [sectionMap, setSectionMap] = useState<Record<number, Section[]>>({});
+
   useEffect(() => {
     if (!token) return;
     getMyCourses(token)
       .then(setCourses)
       .catch(() => {})
-      .finally(() => setCoursesLoading(false));
+      .finally(() => setLoading(false));
   }, [token]);
 
-  // 과정 선택 후 콘솔 진입
-  const handleStartLesson = (course: Course) => {
-    setSelectedCourse(course);
-    setLesson(makeBlankLesson(userId));
-    setConsoleOpen(true);
-  };
-
-  const handleAnalysisComplete = useCallback((result: AnalysisResult) => {
-    setLesson((prev) => ({
-      ...prev,
-      metadata: {
-        ...prev.metadata,
-        topic: prev.metadata.topic || result.topic,
-      },
-      knowledge_base: {
-        keywords: Array.from(new Set([...prev.knowledge_base.keywords, ...result.keywords])),
-        core_concepts: [
-          ...prev.knowledge_base.core_concepts,
-          ...result.core_concepts.map((c) => ({ id: uuidv4(), title: c.title, summary: c.summary })),
-        ],
-      },
-    }));
-  }, []);
-
-  const newLesson = () => {
-    if (confirm("현재 편집 내용이 초기화됩니다. 계속하시겠습니까?")) {
-      setLesson(makeBlankLesson(userId));
+  const toggleCourse = async (course: Course) => {
+    if (expandedCourse === course.id) {
+      setExpandedCourse(null);
+      setExpandedUnit(null);
+      return;
+    }
+    setExpandedCourse(course.id);
+    setExpandedUnit(null);
+    if (!unitMap[course.id]) {
+      const units = await getUnits(course.id).catch(() => [] as Unit[]);
+      setUnitMap((prev) => ({ ...prev, [course.id]: units }));
     }
   };
 
-  const handleActivateQuiz = async () => {
-    if (!lesson.lesson_id) return;
-    setQuizActivating(true);
-    setQuizMsg("");
-    try {
-      await activateQuiz(lesson.lesson_id);
-      setQuizMsg("퀴즈가 활성화되었습니다. Wing에서 자동으로 퀴즈 패널이 표시됩니다.");
-    } catch (e) {
-      setQuizMsg(`오류: ${(e as Error).message}`);
-    } finally {
-      setQuizActivating(false);
+  const toggleUnit = async (courseId: number, unit: Unit) => {
+    if (expandedUnit === unit.id) {
+      setExpandedUnit(null);
+      return;
+    }
+    setExpandedUnit(unit.id);
+    if (!sectionMap[unit.id]) {
+      const sections = await getSections(courseId, unit.id).catch(() => [] as Section[]);
+      setSectionMap((prev) => ({ ...prev, [unit.id]: sections }));
     }
   };
 
-  // ── 과정 선택 화면 ──────────────────────────────────────────────────────
-  if (!consoleOpen) {
-    return (
-      <div className="max-w-screen-xl mx-auto px-6 py-6 flex flex-col gap-6">
-        <div>
-          <h1 className="text-lg font-bold">강의 콘솔</h1>
-          <p className="text-slate-400 text-sm mt-0.5">수업을 시작할 과정을 선택하세요.</p>
-        </div>
+  const handleSectionClick = (section: Section) => {
+    router.push(`/instructor/lesson/${section.lesson_id}`);
+  };
 
-        {coursesLoading ? (
-          <p className="text-slate-500 text-sm animate-pulse">과정 목록을 불러오는 중…</p>
-        ) : courses.length === 0 ? (
-          <div className="card text-center py-10">
-            <p className="text-slate-400 text-sm">배정된 과정이 없습니다.</p>
-            <p className="text-slate-600 text-xs mt-1">운영자에게 과정 배정을 요청하세요.</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {courses.map((c) => (
-              <div key={c.id} className="card flex flex-col gap-3">
-                <div>
-                  <p className="font-semibold">{c.title}</p>
-                  <p className="text-xs text-slate-400 mt-0.5">{c.description || "설명 없음"}</p>
-                  <span className="badge bg-slate-700 text-slate-400 text-xs mt-2">
-                    {c.duration_months}개월
-                  </span>
-                </div>
-                <button
-                  className="btn-primary text-sm w-full mt-auto"
-                  onClick={() => handleStartLesson(c)}
-                >
-                  수업 시작
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // ── 강의 콘솔 화면 ──────────────────────────────────────────────────────
   return (
     <div className="max-w-screen-xl mx-auto px-6 py-6 flex flex-col gap-6">
-      {/* 헤더 */}
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setConsoleOpen(false)}
-              className="text-slate-400 hover:text-slate-200 text-sm transition-colors"
-            >
-              ← 과정 목록
-            </button>
-            {selectedCourse && (
-              <span className="badge bg-blue-900/40 text-blue-300 text-xs">{selectedCourse.title}</span>
-            )}
-          </div>
-          <h1 className="text-lg font-bold mt-1">강의 콘솔</h1>
-          <p className="text-slate-400 text-sm mt-0.5">
-            STT로 강의를 받아적고, 수업 종료 후 지식 카드를 자동 생성하세요.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            className={`text-sm px-4 py-2 rounded-lg font-semibold transition-colors ${
-              quizActivating ? "bg-yellow-700 text-yellow-200 cursor-wait" : "bg-yellow-600 hover:bg-yellow-500 text-white"
-            }`}
-            onClick={handleActivateQuiz}
-            disabled={quizActivating || !lesson.lesson_id}
-            title="현재 레슨의 퀴즈를 활성화합니다"
-          >
-            {quizActivating ? "활성화 중…" : "🎯 퀴즈 시작"}
-          </button>
-          <button className="btn-ghost text-sm" onClick={newLesson}>
-            + 새 수업
-          </button>
-        </div>
+      <div>
+        <h1 className="text-lg font-bold">강의 콘솔</h1>
+        <p className="text-slate-400 text-sm mt-0.5">과정 → 단원 → 섹션을 선택해 수업을 시작하세요.</p>
       </div>
 
-      {quizMsg && (
-        <p className={`text-xs px-3 py-2 rounded-lg ${
-          quizMsg.startsWith("오류")
-            ? "bg-red-950/30 text-red-300 border border-red-500/30"
-            : "bg-emerald-950/30 text-emerald-300 border border-emerald-500/30"
-        }`}>
-          {quizMsg}
-        </p>
+      {loading && <p className="text-slate-500 text-sm animate-pulse">과정 목록을 불러오는 중…</p>}
+
+      {!loading && courses.length === 0 && (
+        <div className="card text-center py-10">
+          <p className="text-slate-400 text-sm">배정된 과정이 없습니다.</p>
+          <p className="text-slate-600 text-xs mt-1">운영자에게 과정 배정을 요청하세요.</p>
+        </div>
       )}
 
-      <div className="grid grid-cols-1 xl:grid-cols-[1fr_380px] gap-6">
-        <div className="flex flex-col gap-6">
-          <SttPanel
-            onAnalysisComplete={handleAnalysisComplete}
-            lessonTopic={lesson.metadata.topic}
-            lessonKeywords={lesson.knowledge_base.keywords}
-            lessonLibraries={lesson.metadata.instructor_style.preferred_libraries}
-          />
-          <KnowledgeCardEditor lesson={lesson} onChange={setLesson} />
-        </div>
-        <div className="flex flex-col gap-6">
-          <CurriculumPanel lesson={lesson} onChange={setLesson} />
-          <DeployButton lesson={lesson} />
-          <JsonPreview lesson={lesson} />
-        </div>
-      </div>
+      <div className="flex flex-col gap-2">
+        {courses.map((course) => {
+          const isExpanded = expandedCourse === course.id;
+          const units = unitMap[course.id] ?? [];
 
-      <ClassOverview pollInterval={15_000} />
+          return (
+            <div key={course.id} className="rounded-lg border border-slate-700 overflow-hidden">
+              {/* 과정 행 */}
+              <button
+                className={`w-full text-left px-5 py-4 flex items-center justify-between transition-colors ${
+                  isExpanded ? "bg-blue-900/30" : "bg-slate-800/40 hover:bg-slate-800"
+                }`}
+                onClick={() => toggleCourse(course)}
+              >
+                <div className="flex items-center gap-3">
+                  <span className={`text-sm transition-transform ${isExpanded ? "rotate-90" : ""}`}>▶</span>
+                  <div>
+                    <p className="font-semibold">{course.title}</p>
+                    <p className="text-xs text-slate-400 mt-0.5">{course.description || "설명 없음"}</p>
+                  </div>
+                </div>
+                <span className="badge bg-slate-700 text-slate-400 text-xs shrink-0">
+                  {course.duration_months}개월
+                </span>
+              </button>
+
+              {/* 단원 목록 */}
+              {isExpanded && (
+                <div className="border-t border-slate-700">
+                  {units.length === 0 ? (
+                    <p className="px-8 py-3 text-sm text-slate-500">단원이 없습니다.</p>
+                  ) : (
+                    units.sort((a, b) => a.order_index - b.order_index).map((unit) => {
+                      const isUnitExpanded = expandedUnit === unit.id;
+                      const sections = sectionMap[unit.id] ?? [];
+
+                      return (
+                        <div key={unit.id} className="border-b border-slate-700/50 last:border-0">
+                          {/* 단원 행 */}
+                          <button
+                            className={`w-full text-left px-8 py-3 flex items-center justify-between transition-colors ${
+                              isUnitExpanded ? "bg-slate-700/30" : "hover:bg-slate-800/60"
+                            }`}
+                            onClick={() => toggleUnit(course.id, unit)}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className={`text-xs text-slate-500 transition-transform ${isUnitExpanded ? "rotate-90" : ""}`}>▶</span>
+                              <p className="text-sm font-medium">{unit.title}</p>
+                            </div>
+                            <span className="text-xs text-slate-600">순서 {unit.order_index}</span>
+                          </button>
+
+                          {/* 섹션(수업일) 목록 */}
+                          {isUnitExpanded && (
+                            <div className="px-12 py-2 flex flex-col gap-1">
+                              {sections.length === 0 ? (
+                                <p className="text-xs text-slate-500 py-2">섹션이 없습니다.</p>
+                              ) : (
+                                sections.map((section) => (
+                                  <button
+                                    key={section.lesson_id}
+                                    onClick={() => handleSectionClick(section)}
+                                    className="text-left px-4 py-2.5 rounded-lg bg-slate-800/50 hover:bg-blue-900/30 hover:border-blue-500/30 border border-slate-700/50 transition-colors"
+                                  >
+                                    <div className="flex items-center justify-between">
+                                      <p className="text-sm">{section.section_title || `섹션 ${section.section_order + 1}`}</p>
+                                      <span className="text-xs text-blue-400">수업 시작 →</span>
+                                    </div>
+                                    <p className="text-xs text-slate-600 font-mono mt-0.5">{section.lesson_id}</p>
+                                  </button>
+                                ))
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

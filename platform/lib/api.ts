@@ -4,8 +4,8 @@ const BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000/v1";
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
-    headers: { "Content-Type": "application/json", ...options?.headers },
     ...options,
+    headers: { "Content-Type": "application/json", ...options?.headers },
   });
   if (!res.ok) {
     const text = await res.text();
@@ -113,6 +113,19 @@ export async function getUnits(courseId: number): Promise<Unit[]> {
 
 export async function createUnit(courseId: number, data: { title: string; order_index: number }) {
   return apiFetch<Unit>(`/courses/${courseId}/units`, { method: "POST", body: JSON.stringify(data) });
+}
+
+import type { Section } from "./types";
+
+export async function getSections(courseId: number, unitId: number): Promise<Section[]> {
+  return apiFetch(`/courses/${courseId}/units/${unitId}/sections`);
+}
+
+export async function enrollStudent(lessonId: string, studentId: string): Promise<void> {
+  await apiFetch(`/lessons/${lessonId}/enroll`, {
+    method: "POST",
+    body: JSON.stringify({ student_id: studentId }),
+  });
 }
 
 // ── 마이크로 프로젝트 ─────────────────────────────────────────────────────

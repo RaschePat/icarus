@@ -194,6 +194,16 @@ export interface StudentSummary {
   red_flag?: RedFlag;
 }
 
+// ── 섹션(수업일) ──────────────────────────────────────────────────────────
+
+export interface Section {
+  lesson_id: string;
+  unit_id: number | null;
+  section_title: string;
+  section_order: number;
+  created_at: string;
+}
+
 // ── STT 분석 결과 ─────────────────────────────────────────────────────────
 
 export interface AnalysisResult {
@@ -233,6 +243,7 @@ export interface SessionSummary {
   session_id: string;
   timestamp_start: string;
   session_aptitude: SessionAptitude;
+  focus_ratio?: number;
 }
 
 export interface MentorStudentDetail {

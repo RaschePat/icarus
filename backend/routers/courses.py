@@ -3,12 +3,13 @@ courses.py — 과정(Course) / 단원(Unit) CRUD + 강사 배정
 """
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Annotated
+from uuid import uuid4
 
 from database import get_db
-from models import Course, Unit, CourseInstructor, UserRole
+from models import Course, Unit, CourseInstructor, UserRole, Lesson, StudentLesson
 from deps import get_current_user
 
 router = APIRouter(prefix="/courses", tags=["courses"])
@@ -50,6 +51,22 @@ class UnitResponse(BaseModel):
 
 class AssignInstructorRequest(BaseModel):
     instructor_id: str
+
+
+class SectionCreate(BaseModel):
+    title: str
+    order: int = 0
+
+
+class SectionResponse(BaseModel):
+    lesson_id: str
+    unit_id: int | None
+    section_title: str
+    section_order: int
+    created_at: str
+
+    class Config:
+        from_attributes = True
 
 
 # ── 과정 엔드포인트 ───────────────────────────────────────────────────────
@@ -175,3 +192,56 @@ async def create_unit(course_id: int, body: UnitCreate, db: AsyncSession = Depen
     await db.commit()
     await db.refresh(row)
     return row
+
+
+# ── 섹션(수업일) 엔드포인트 ───────────────────────────────────────────────
+
+@router.get("/{course_id}/units/{unit_id}/sections", response_model=list[SectionResponse])
+async def list_sections(course_id: int, unit_id: int, db: AsyncSession = Depends(get_db)):
+    """단원 내 섹션(수업일) 목록 반환."""
+    unit = await db.get(Unit, unit_id)
+    if not unit or unit.course_id != course_id:
+        raise HTTPException(status_code=404, detail="단원을 찾을 수 없습니다.")
+    stmt = (
+        select(Lesson)
+        .where(Lesson.unit_id == unit_id)
+        .order_by(Lesson.section_order)
+    )
+    rows = (await db.execute(stmt)).scalars().all()
+    return [
+        {
+            "lesson_id": r.lesson_id,
+            "unit_id": r.unit_id,
+            "section_title": r.section_title,
+            "section_order": r.section_order,
+            "created_at": r.created_at.isoformat(),
+        }
+        for r in rows
+    ]
+
+
+@router.post("/{course_id}/units/{unit_id}/sections", response_model=SectionResponse, status_code=201)
+async def create_section(course_id: int, unit_id: int, body: SectionCreate, db: AsyncSession = Depends(get_db)):
+    """단원 내 새 섹션(수업일) 생성."""
+    unit = await db.get(Unit, unit_id)
+    if not unit or unit.course_id != course_id:
+        raise HTTPException(status_code=404, detail="단원을 찾을 수 없습니다.")
+    lesson_id = f"lesson-{uuid4().hex[:8]}"
+    row = Lesson(
+        lesson_id=lesson_id,
+        unit_id=unit_id,
+        section_title=body.title,
+        section_order=body.order,
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return {
+        "lesson_id": row.lesson_id,
+        "unit_id": row.unit_id,
+        "section_title": row.section_title,
+        "section_order": row.section_order,
+        "created_at": row.created_at.isoformat(),
+    }
+
+

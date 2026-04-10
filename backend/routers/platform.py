@@ -11,6 +11,7 @@ from database import get_db
 from models import (
     LessonContext, MicroProject, PlatformNotification,
     MentorStudent, UserRole, UserProfile, ActivityLog,
+    Lesson, StudentLesson,
 )
 from deps import get_current_user
 
@@ -227,9 +228,11 @@ async def get_mentor_student_detail(
     logs = (await db.execute(stmt_logs)).scalars().all()
     recent_sessions = [
         {
-            "session_id":      log.session_id,
-            "timestamp_start": log.timestamp_start.isoformat(),
+            "session_id":       log.session_id,
+            "timestamp_start":  log.timestamp_start.isoformat(),
             "session_aptitude": log.session_aptitude,
+            # focus_ratio: session_aptitude에 포함되어 있으면 추출, 없으면 0
+            "focus_ratio": (log.session_aptitude or {}).get("focus_ratio", 0),
         }
         for log in logs
     ]
@@ -321,6 +324,38 @@ async def remove_mentor_student(student_id: str, mentor_id: str, db: AsyncSessio
     await db.delete(row)
     await db.commit()
     return {"status": "ok"}
+
+
+# ── 수강 등록 ────────────────────────────────────────────────────────────
+
+class EnrollRequest(BaseModel):
+    student_id: str
+
+
+@router.post("/lessons/{lesson_id}/enroll", status_code=201)
+async def enroll_student(lesson_id: str, body: EnrollRequest, db: AsyncSession = Depends(get_db)):
+    """학생을 수업 섹션에 등록합니다."""
+    lesson = await db.get(Lesson, lesson_id)
+    if not lesson:
+        raise HTTPException(status_code=404, detail="수업을 찾을 수 없습니다.")
+    dup_stmt = select(StudentLesson).where(
+        StudentLesson.lesson_id == lesson_id,
+        StudentLesson.student_id == body.student_id,
+    )
+    if (await db.execute(dup_stmt)).scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="이미 등록된 학생입니다.")
+    row = StudentLesson(lesson_id=lesson_id, student_id=body.student_id)
+    db.add(row)
+    await db.commit()
+    return {"status": "enrolled", "lesson_id": lesson_id, "student_id": body.student_id}
+
+
+@router.get("/lessons/{lesson_id}/students")
+async def list_lesson_students(lesson_id: str, db: AsyncSession = Depends(get_db)):
+    """해당 수업의 수강생 목록."""
+    stmt = select(StudentLesson).where(StudentLesson.lesson_id == lesson_id)
+    rows = (await db.execute(stmt)).scalars().all()
+    return [{"student_id": r.student_id, "enrolled_at": r.enrolled_at.isoformat()} for r in rows]
 
 
 # ── 퀴즈 활성화 (강사 트리거) ─────────────────────────────────────────────

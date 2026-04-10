@@ -27,6 +27,10 @@ _MIGRATIONS = [
     "ALTER TABLE courses ADD COLUMN IF NOT EXISTS instructor_id VARCHAR REFERENCES user_roles(user_id)",
     # courses 테이블: created_at 컬럼
     "ALTER TABLE courses ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT now()",
+    # lessons 테이블: 섹션 메타데이터 컬럼 (기존 lessons 테이블이 있을 경우 대비)
+    "ALTER TABLE lessons ADD COLUMN IF NOT EXISTS unit_id INTEGER REFERENCES units(id)",
+    "ALTER TABLE lessons ADD COLUMN IF NOT EXISTS section_title VARCHAR DEFAULT ''",
+    "ALTER TABLE lessons ADD COLUMN IF NOT EXISTS section_order INTEGER DEFAULT 0",
 ]
 
 

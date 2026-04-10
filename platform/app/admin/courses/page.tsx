@@ -31,6 +31,7 @@ export default function AdminCoursesPage() {
   // 강사 배정 폼
   const [assignInstructorId, setAssignInstructorId] = useState("");
   const [assigning, setAssigning] = useState(false);
+  const [reassigning, setReassigning] = useState(false); // 재배정 폼 토글
   const [msg, setMsg] = useState("");
 
   const loadCourses = () =>
@@ -49,6 +50,7 @@ export default function AdminCoursesPage() {
   const loadUnits = (c: Course) => {
     setSelected(c);
     setAssignInstructorId("");
+    setReassigning(false);
     getUnits(c.id).then(setUnits).catch(() => {});
   };
 
@@ -86,6 +88,7 @@ export default function AdminCoursesPage() {
       await assignInstructor(selected.id, assignInstructorId, token);
       setMsg("✓ 강사 배정 완료");
       setAssignInstructorId("");
+      setReassigning(false);
       loadCourses();
     } catch (e) {
       setMsg(`오류: ${(e as Error).message}`);
@@ -184,17 +187,45 @@ export default function AdminCoursesPage() {
           {selected && (
             <div className="card flex flex-col gap-3">
               <h2 className="font-semibold text-sm">{selected.title} — 강사 배정</h2>
-              <div className="flex gap-2">
-                <select className="input text-sm flex-1" value={assignInstructorId} onChange={(e) => setAssignInstructorId(e.target.value)}>
-                  <option value="">— 강사 선택 —</option>
-                  {instructors.map((i) => (
-                    <option key={i.user_id} value={i.user_id}>{i.name} ({i.email})</option>
-                  ))}
-                </select>
-                <button className="btn-primary text-sm px-4 shrink-0" onClick={handleAssign} disabled={assigning || !assignInstructorId}>
-                  {assigning ? "배정 중…" : "배정"}
-                </button>
-              </div>
+
+              {selected.instructor_id && !reassigning ? (
+                /* 배정 완료 상태 */
+                <div className="flex items-center justify-between bg-emerald-950/30 border border-emerald-500/30 rounded-lg px-4 py-2.5">
+                  <div>
+                    <p className="text-xs text-emerald-400 font-medium">배정 완료</p>
+                    <p className="text-sm text-slate-200">{instructorName(selected.instructor_id)}</p>
+                  </div>
+                  <button
+                    className="btn-ghost text-xs"
+                    onClick={() => setReassigning(true)}
+                  >
+                    재배정
+                  </button>
+                </div>
+              ) : (
+                /* 배정 폼 */
+                <div className="flex flex-col gap-2">
+                  {selected.instructor_id && (
+                    <p className="text-xs text-slate-500">현재 담당: {instructorName(selected.instructor_id)}</p>
+                  )}
+                  <div className="flex gap-2">
+                    <select className="input text-sm flex-1" value={assignInstructorId} onChange={(e) => setAssignInstructorId(e.target.value)}>
+                      <option value="">— 강사 선택 —</option>
+                      {instructors.map((i) => (
+                        <option key={i.user_id} value={i.user_id}>{i.name} ({i.email})</option>
+                      ))}
+                    </select>
+                    <button className="btn-primary text-sm px-4 shrink-0" onClick={handleAssign} disabled={assigning || !assignInstructorId}>
+                      {assigning ? "배정 중…" : "배정"}
+                    </button>
+                    {reassigning && (
+                      <button className="btn-ghost text-sm px-3 shrink-0" onClick={() => setReassigning(false)}>
+                        취소
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

@@ -124,3 +124,28 @@ class PlatformNotification(Base):
     message: Mapped[str] = mapped_column(String, nullable=False)
     is_read: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class Lesson(Base):
+    """수업 섹션(수업일) — 과정 단원 내 개별 수업 슬롯."""
+    __tablename__ = "lessons"
+
+    lesson_id: Mapped[str] = mapped_column(String, primary_key=True)
+    unit_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("units.id"), nullable=True, index=True
+    )
+    section_title: Mapped[str] = mapped_column(String, default="")
+    section_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class StudentLesson(Base):
+    """학생-수업 수강 등록 (N:M)."""
+    __tablename__ = "student_lessons"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    student_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    lesson_id: Mapped[str] = mapped_column(
+        String, ForeignKey("lessons.lesson_id"), nullable=False, index=True
+    )
+    enrolled_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
