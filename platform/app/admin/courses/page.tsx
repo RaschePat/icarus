@@ -54,17 +54,22 @@ export default function AdminCoursesPage() {
 
   const handleAddCourse = async () => {
     if (!courseTitle.trim()) return;
-    const course = await createCourse({
-      title: courseTitle,
-      description: courseDesc,
-      duration_months: courseDuration,
-    });
-    if (selectedInstructorId && token) {
-      await assignInstructor(course.id, selectedInstructorId, token).catch(() => {});
+    setMsg("");
+    try {
+      const course = await createCourse({
+        title: courseTitle,
+        description: courseDesc,
+        duration_months: courseDuration,
+      });
+      if (selectedInstructorId && token) {
+        await assignInstructor(course.id, selectedInstructorId, token).catch(() => {});
+      }
+      setCourseTitle(""); setCourseDesc(""); setSelectedInstructorId("");
+      setMsg(`✓ '${course.title}' 과정이 생성됐습니다.`);
+      loadCourses();
+    } catch (e) {
+      setMsg(`오류: ${(e as Error).message}`);
     }
-    setCourseTitle(""); setCourseDesc(""); setSelectedInstructorId("");
-    setMsg(`✓ '${course.title}' 과정이 생성됐습니다.`);
-    loadCourses();
   };
 
   const handleAddUnit = async () => {

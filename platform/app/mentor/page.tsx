@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import { getMentorStudents, addMentorStudent, removeMentorStudent } from "@/lib/api";
+import { getMentorStudents, addMentorStudent, removeMentorStudent, getUsersByRole } from "@/lib/api";
 import Link from "next/link";
-import type { MentorStudentItem, AptitudeScores } from "@/lib/types";
+import type { MentorStudentItem, AptitudeScores, UserBasic } from "@/lib/types";
 
 function AptitudeMini({ aptitude }: { aptitude: AptitudeScores }) {
   const bars = [
@@ -34,12 +34,17 @@ function AptitudeMini({ aptitude }: { aptitude: AptitudeScores }) {
 export default function MentorPage() {
   const { data: session } = useSession();
   const mentorId = (session?.user as { user_id?: string })?.user_id ?? "";
+  const token = (session?.user as { access_token?: string })?.access_token ?? "";
 
   const [students, setStudents] = useState<MentorStudentItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [addInput, setAddInput] = useState("");
-  const [adding, setAdding] = useState(false);
-  const [error, setError] = useState("");
+
+  // 이메일 검색 상태
+  const [searchEmail, setSearchEmail] = useState("");
+  const [searchResults, setSearchResults] = useState<UserBasic[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchMsg, setSearchMsg] = useState("");
+  const [adding, setAdding] = useState<string | null>(null); // 추가 중인 student_id
 
   const load = () => {
     if (!mentorId) return;
@@ -51,19 +56,33 @@ export default function MentorPage() {
 
   useEffect(() => { load(); }, [mentorId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleAdd = async () => {
-    const id = addInput.trim();
-    if (!id) return;
-    setAdding(true);
-    setError("");
+  const handleSearch = async () => {
+    const q = searchEmail.trim();
+    if (!q || !token) return;
+    setSearching(true);
+    setSearchMsg("");
+    setSearchResults([]);
     try {
-      await addMentorStudent(mentorId, id);
-      setAddInput("");
+      const results = await getUsersByRole("student", token, q);
+      if (results.length === 0) setSearchMsg("검색 결과가 없습니다.");
+      setSearchResults(results);
+    } catch (e) {
+      setSearchMsg(`오류: ${(e as Error).message}`);
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const handleAdd = async (student: UserBasic) => {
+    setAdding(student.user_id);
+    try {
+      await addMentorStudent(mentorId, student.user_id);
+      setSearchResults((prev) => prev.filter((s) => s.user_id !== student.user_id));
       load();
     } catch (e) {
-      setError((e as Error).message);
+      setSearchMsg(`오류: ${(e as Error).message}`);
     } finally {
-      setAdding(false);
+      setAdding(null);
     }
   };
 
@@ -84,6 +103,8 @@ export default function MentorPage() {
     return d.toLocaleDateString("ko-KR");
   };
 
+  const alreadyAdded = new Set(students.map((s) => s.user_id));
+
   return (
     <div className="max-w-screen-xl mx-auto px-6 py-6 flex flex-col gap-6">
       <div>
@@ -91,26 +112,51 @@ export default function MentorPage() {
         <p className="text-slate-400 text-sm mt-0.5">담당 학생의 상세 분석을 확인하세요.</p>
       </div>
 
-      {/* 학생 추가 */}
+      {/* 학생 검색 & 추가 */}
       <div className="card flex flex-col gap-3">
         <h2 className="font-semibold text-sm">학생 추가</h2>
         <div className="flex gap-2">
           <input
             className="input text-sm flex-1"
-            placeholder="학생 user_id 입력"
-            value={addInput}
-            onChange={(e) => setAddInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+            placeholder="학생 이메일로 검색"
+            value={searchEmail}
+            onChange={(e) => setSearchEmail(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleSearch()}
           />
           <button
             className="btn-primary text-sm px-4 shrink-0"
-            onClick={handleAdd}
-            disabled={adding}
+            onClick={handleSearch}
+            disabled={searching || !searchEmail.trim()}
           >
-            {adding ? "추가 중…" : "추가"}
+            {searching ? "검색 중…" : "검색"}
           </button>
         </div>
-        {error && <p className="text-xs text-red-400">{error}</p>}
+
+        {searchMsg && <p className="text-xs text-slate-400">{searchMsg}</p>}
+
+        {searchResults.length > 0 && (
+          <div className="flex flex-col gap-1 border border-slate-700 rounded-lg divide-y divide-slate-700/50">
+            {searchResults.map((s) => (
+              <div key={s.user_id} className="flex items-center justify-between px-3 py-2">
+                <div>
+                  <p className="text-sm font-medium">{s.name}</p>
+                  <p className="text-xs text-slate-500">{s.email}</p>
+                </div>
+                {alreadyAdded.has(s.user_id) ? (
+                  <span className="text-xs text-slate-500">이미 추가됨</span>
+                ) : (
+                  <button
+                    className="btn-primary text-xs px-3"
+                    onClick={() => handleAdd(s)}
+                    disabled={adding === s.user_id}
+                  >
+                    {adding === s.user_id ? "추가 중…" : "추가"}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* 학생 목록 */}
@@ -124,9 +170,7 @@ export default function MentorPage() {
         )}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {students.map((s) => (
-            <div key={s.user_id} className="card flex flex-col gap-3 relative">
-              {/* RED_FLAG 뱃지 */}
-              {/* top_category 또는 RED_FLAG 표시 — 실제 red_flag 필드는 detail에서만 옴 */}
+            <div key={s.user_id} className="card flex flex-col gap-3">
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <p className="font-semibold">{s.name}</p>
@@ -138,14 +182,12 @@ export default function MentorPage() {
                 </div>
               </div>
 
-              {/* 관심사 top_category */}
               {s.top_category && (
                 <span className="badge bg-blue-900/40 text-blue-300 text-xs w-fit">
                   {s.top_category}
                 </span>
               )}
 
-              {/* career_identity 태그 */}
               {s.career_identity.length > 0 && (
                 <div className="flex flex-wrap gap-1">
                   {s.career_identity.slice(0, 3).map((tag) => (
@@ -159,10 +201,8 @@ export default function MentorPage() {
                 </div>
               )}
 
-              {/* 적성 바 */}
               <AptitudeMini aptitude={s.aptitude} />
 
-              {/* 액션 버튼 */}
               <div className="flex gap-2 mt-1">
                 <Link
                   href={`/mentor/student/${s.user_id}`}

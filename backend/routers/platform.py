@@ -129,11 +129,24 @@ async def get_users_by_role(
     role: str,
     current_user: Annotated[dict, Depends(get_current_user)],
     db: AsyncSession = Depends(get_db),
+    search: str | None = None,
 ):
-    """역할별 유저 목록 조회 (운영자 전용)."""
-    if current_user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="관리자 권한이 필요합니다.")
-    stmt = select(UserRole).where(UserRole.role == role).order_by(UserRole.name)
+    """역할별 유저 목록 조회.
+    - admin: 모든 role 조회 가능
+    - mentor: role=student 조회 + 이메일 검색 가능
+    """
+    caller_role = current_user["role"]
+    if caller_role == "admin":
+        pass
+    elif caller_role == "mentor" and role == "student":
+        pass
+    else:
+        raise HTTPException(status_code=403, detail="권한이 없습니다.")
+
+    stmt = select(UserRole).where(UserRole.role == role)
+    if search:
+        stmt = stmt.where(UserRole.email.ilike(f"%{search}%"))
+    stmt = stmt.order_by(UserRole.name)
     rows = (await db.execute(stmt)).scalars().all()
     return [
         {"user_id": r.user_id, "name": r.name, "email": r.email, "role": r.role}

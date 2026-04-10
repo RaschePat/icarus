@@ -156,8 +156,9 @@ export async function getUserProfile(userId: string): Promise<UserProfile> {
 
 // ── 역할별 유저 목록 (운영자 전용) ───────────────────────────────────────
 
-export async function getUsersByRole(role: string, token: string): Promise<UserBasic[]> {
-  return apiFetchAuth(`/users?role=${role}`, token);
+export async function getUsersByRole(role: string, token: string, search?: string): Promise<UserBasic[]> {
+  const qs = search ? `&search=${encodeURIComponent(search)}` : "";
+  return apiFetchAuth(`/users?role=${role}${qs}`, token);
 }
 
 // ── 멘토 ─────────────────────────────────────────────────────────────────
