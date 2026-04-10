@@ -88,7 +88,7 @@ export async function activate(context: vscode.ExtensionContext) {
     })
   );
 
-  // 활성화 시 자동 레슨 로드 (퀴즈 + harness_config)
+  // ── 활성화 시 자동 레슨 로드 (퀴즈 + harness_config) ────────────────────
   const lessonId: string = vscode.workspace.getConfiguration("wing").get("lessonId") ?? "";
   if (lessonId) {
     fetchLesson(lessonId)
@@ -99,9 +99,31 @@ export async function activate(context: vscode.ExtensionContext) {
       .catch(() => { /* 무시 — 수동 로드로 재시도 가능 */ });
   }
 
-  // ── 정리 ───────────────────────────────────────────────────────
+  // ── Wing 폴링: 30초마다 today-lesson 확인하여 새 lesson 자동 로드 ────────
+  let _lastPolledLessonId: string = lessonId;
+  const _pollInterval = setInterval(async () => {
+    try {
+      const config   = vscode.workspace.getConfiguration("wing");
+      const baseUrl: string = config.get("backendUrl") ?? "http://localhost:8000";
+      const res = await fetch(`${baseUrl}/v1/today-lesson`);
+      if (!res.ok) { return; }
+      const data = await res.json() as { lesson_id: string | null };
+      const newId = data.lesson_id;
+      if (newId && newId !== _lastPolledLessonId) {
+        _lastPolledLessonId = newId;
+        // 새 lesson_id 감지 — 자동 로드
+        const lesson = await fetchLesson(newId);
+        if (lesson.quiz_pool && lesson.quiz_pool.length > 0) { panel.loadQuiz(lesson.quiz_pool); }
+        if (lesson.harness_config) { panel.setHarnessConfig(lesson.harness_config); }
+        panel.pushSystemMessage(`📚 새 수업이 배포되었습니다 (${newId}). Wing이 자동으로 동기화했습니다.`);
+      }
+    } catch { /* 폴링 실패는 무시 */ }
+  }, 30_000);
+
+  // ── 정리 ───────────────────────────────────────────────────────────────
   context.subscriptions.push(
     new vscode.Disposable(() => {
+      clearInterval(_pollInterval);
       tracker.dispose();
       mcp.dispose();
     })

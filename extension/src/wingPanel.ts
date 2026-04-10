@@ -184,6 +184,27 @@ export class WingPanelProvider implements vscode.WebviewViewProvider {
       role: "wing",
       text: `✅ 빈칸 주입 완료 (${injected}/${harness.target_logic.length}개)\nWing 미션을 시작하세요! 🚀`,
     });
+
+    // ── 플랫폼 DB에 마이크로 프로젝트 저장 ──────────────────────────────────
+    try {
+      const config  = vscode.workspace.getConfiguration("wing");
+      const baseUrl: string = config.get("backendUrl") ?? "http://localhost:8000";
+      const userId: string  = config.get("userId") ?? "anonymous";
+      const sessionId: string = config.get("sessionId") ?? `session-${Date.now()}`;
+      await fetch(`${baseUrl}/v1/micro-projects`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id:           userId,
+          session_id:        sessionId,
+          name:              proj.name,
+          template:          proj.template,
+          interest_category: "기타",
+          harness_total:     harness.target_logic.length,
+          harness_filled:    0,
+        }),
+      });
+    } catch { /* DB 저장 실패는 무시 */ }
   }
 
   private async _handleFlightTest(filePath: string, command: string) {

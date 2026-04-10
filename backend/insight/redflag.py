@@ -120,11 +120,25 @@ async def send_redflag_alert(user_id: str, severity: str, reason: str) -> bool:
     """
     POST /alert/redflag 엔드포인트를 내부 HTTP로 호출하거나
     Slack Webhook을 직접 전송합니다.
+    플랫폼 알림도 함께 전송합니다.
 
     Returns:
         True  → 전송 성공
         False → 전송 실패 또는 Webhook 미설정
     """
+    # ── 플랫폼 알림 전송 (멘토에게) ──────────────────────────────────────
+    api_base = getattr(settings, "INTERNAL_API_BASE", "http://localhost:8000")
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            await client.post(f"{api_base}/v1/notifications", json={
+                "user_id": user_id,
+                "type": "RED_FLAG",
+                "title": f"RED FLAG 감지 [{severity}]",
+                "message": reason,
+            })
+    except Exception:
+        pass  # 플랫폼 알림 실패는 무시
+
     if not settings.SLACK_WEBHOOK_URL:
         return False
 

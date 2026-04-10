@@ -6,6 +6,7 @@ import SttPanel from "@/components/SttPanel";
 import KnowledgeCardEditor from "@/components/KnowledgeCardEditor";
 import DeployButton from "@/components/DeployButton";
 import ClassOverview from "@/components/ClassOverview";
+import CurriculumPanel from "@/components/CurriculumPanel";
 import type { LessonContext, StudentStatus } from "@/lib/types";
 import type { AnalysisResult } from "@/app/api/classify-segment/route";
 
@@ -124,12 +125,14 @@ export default function ConsolePage() {
             onAnalysisComplete={handleAnalysisComplete}
             lessonTopic={lesson.metadata.topic}
             lessonKeywords={lesson.knowledge_base.keywords}
+            lessonLibraries={lesson.metadata.instructor_style.preferred_libraries}
           />
           <KnowledgeCardEditor lesson={lesson} onChange={setLesson} />
         </div>
 
-        {/* 오른쪽: 배포 버튼 + JSON 미리보기 */}
+        {/* 오른쪽: 커리큘럼 패널 + 배포 버튼 + JSON 미리보기 */}
         <div className="flex flex-col gap-6">
+          <CurriculumPanel lesson={lesson} onChange={setLesson} />
           <DeployButton lesson={lesson} />
           <JsonPreview lesson={lesson} />
         </div>

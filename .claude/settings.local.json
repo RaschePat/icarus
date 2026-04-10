@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p \"/Users/mixer_g2/Desktop/Project/icarus/platform/app/mentor/student/[userId]\")",
+      "Bash(mkdir -p /Users/mixer_g2/Desktop/Project/icarus/platform/app/api/auth/[...nextauth])"
+    ]
+  }
+}

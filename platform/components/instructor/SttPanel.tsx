@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import type { AnalysisResult } from "@/app/api/classify-segment/route";
+import { classifySegment } from "@/lib/api";
+import type { AnalysisResult } from "@/lib/types";
 
 // ── Web Speech API 최소 타입 선언 (브라우저 전용 API) ─────────────────────
 
@@ -150,18 +151,12 @@ export default function SttPanel({ onAnalysisComplete, lessonTopic, lessonKeywor
     setLastResult(null);
 
     try {
-      const res = await fetch("/api/classify-segment", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({
-          transcript,
-          topic:     lessonTopic     || undefined,
-          keywords:  lessonKeywords?.length  ? lessonKeywords  : undefined,
-          libraries: lessonLibraries?.length ? lessonLibraries : undefined,
-        }),
+      const data = await classifySegment({
+        transcript,
+        topic:     lessonTopic     || undefined,
+        keywords:  lessonKeywords?.length  ? lessonKeywords  : undefined,
+        libraries: lessonLibraries?.length ? lessonLibraries : undefined,
       });
-      if (!res.ok) throw new Error("API 오류");
-      const data = (await res.json()) as AnalysisResult;
       setLastResult(data);
       onAnalysisComplete(data);
     } catch {
@@ -170,6 +165,14 @@ export default function SttPanel({ onAnalysisComplete, lessonTopic, lessonKeywor
       setIsAnalyzing(false);
     }
   }, [sentences, isListening, stopListening, onAnalysisComplete, lessonTopic, lessonKeywords, lessonLibraries]);
+
+  // 녹음 중지 시 자동 분석
+  useEffect(() => {
+    if (!isListening && sentences.length > 0 && !isAnalyzing) {
+      analyzeLesson();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isListening]);
 
   // ── 초기화 ─────────────────────────────────────────────────────────────
 

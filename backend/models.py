@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import String, Float, Integer, JSON, DateTime, func
+from sqlalchemy import String, Float, Integer, JSON, DateTime, func, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
 
 from database import Base
@@ -41,3 +41,70 @@ class UserProfile(Base):
     career_identity: Mapped[list] = mapped_column(JSON, default=list)
     interest_profile: Mapped[dict] = mapped_column(JSON, default=dict)
     last_updated: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+# ── 신규 테이블 (platform 통합) ───────────────────────────────────────────
+
+class Course(Base):
+    __tablename__ = "courses"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[str] = mapped_column(String, default="")
+    duration_months: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class Unit(Base):
+    __tablename__ = "units"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    course_id: Mapped[int] = mapped_column(Integer, ForeignKey("courses.id"), nullable=False)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    order_index: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class UserRole(Base):
+    __tablename__ = "user_roles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String, nullable=False, unique=True, index=True)
+    email: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    role: Mapped[str] = mapped_column(String, nullable=False, default="student")  # student/instructor/admin/mentor
+    hashed_password: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class MentorStudent(Base):
+    __tablename__ = "mentor_students"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    mentor_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    student_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+
+
+class MicroProject(Base):
+    __tablename__ = "micro_projects"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    session_id: Mapped[str] = mapped_column(String, nullable=False)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    template: Mapped[str] = mapped_column(String, nullable=False)  # java/python/node
+    interest_category: Mapped[str] = mapped_column(String, default="기타")
+    harness_total: Mapped[int] = mapped_column(Integer, default=0)
+    harness_filled: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class PlatformNotification(Base):
+    __tablename__ = "platform_notifications"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    type: Mapped[str] = mapped_column(String, nullable=False)  # RED_FLAG / INFO / QUIZ
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    message: Mapped[str] = mapped_column(String, nullable=False)
+    is_read: Mapped[bool] = mapped_column(default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
