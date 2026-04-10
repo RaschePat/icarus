@@ -82,15 +82,16 @@ export class ClaudeClient {
       return `Wing 연결 오류: ${(e as Error).message}`;
     }
 
-    // JSON 응답 파싱
+    // JSON 응답 파싱 (```json ... ``` 코드블록 제거 후 파싱)
     let category: Category = "LOGIC";
     let message = raw;
     try {
-      const parsed = JSON.parse(raw);
+      const jsonStr = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+      const parsed = JSON.parse(jsonStr);
       category = CATEGORIES.includes(parsed.category) ? parsed.category : "LOGIC";
       message = parsed.message ?? raw;
     } catch {
-      // JSON이 아니면 그대로 사용
+      // JSON이 아니면 raw 그대로 사용
     }
 
     // WING_REQUEST 이벤트 기록
@@ -131,7 +132,8 @@ export class ClaudeClient {
     }
 
     try {
-      const p = JSON.parse(raw);
+      const jsonStr = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+      const p = JSON.parse(jsonStr);
       const validTemplates = ["java", "python", "node"];
       return {
         name: String(p.name ?? "my-project")

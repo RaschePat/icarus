@@ -705,7 +705,13 @@ export class WingPanelProvider implements vscode.WebviewViewProvider {
 
         label.className = 'label';
         bubble.className = 'bubble ' + role;
-        bubble.textContent = text;
+        if (role === 'wing') {
+          let display = text;
+          try { const p = JSON.parse(text); if (p.message) { display = p.message; } } catch {}
+          bubble.innerHTML = display.replace(/\\n/g, '<br>');
+        } else {
+          bubble.textContent = text;
+        }
 
         if (role === 'user')   label.textContent = '나';
         if (role === 'wing')   label.textContent = 'Wing';
@@ -742,7 +748,7 @@ export class WingPanelProvider implements vscode.WebviewViewProvider {
 
     btnSend.addEventListener('click', sendMessage);
     txtInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); setTimeout(() => sendMessage(), 0); }
     });
 
     // 비행테스트
