@@ -8,16 +8,16 @@ import KnowledgeCardEditor from "@/components/instructor/KnowledgeCardEditor";
 import DeployButton from "@/components/instructor/DeployButton";
 import CurriculumPanel from "@/components/instructor/CurriculumPanel";
 import ClassOverview from "@/components/instructor/ClassOverview";
-import { activateQuiz } from "@/lib/api";
-import type { LessonContext, AnalysisResult } from "@/lib/types";
+import { activateQuiz, getMyCourses } from "@/lib/api";
+import type { LessonContext, AnalysisResult, Course } from "@/lib/types";
 
-function makeBlankLesson(): LessonContext {
+function makeBlankLesson(instructorId = "instructor-001"): LessonContext {
   return {
-    lesson_id: "",
+    lesson_id: `lesson-${uuidv4().slice(0, 8)}`,
     metadata: {
       topic: "",
-      instructor_id: "instructor-001",
-      timestamp: "",
+      instructor_id: instructorId,
+      timestamp: new Date().toISOString(),
       instructor_style: {
         language: "java",
         naming_convention: "camelCase",
@@ -52,21 +52,35 @@ function JsonPreview({ lesson }: { lesson: LessonContext }) {
 
 export default function InstructorConsolePage() {
   const { data: session } = useSession();
-  const [lesson, setLesson] = useState<LessonContext>(makeBlankLesson);
+  const token = (session?.user as { access_token?: string })?.access_token ?? "";
+  const userId = (session?.user as { user_id?: string })?.user_id ?? "instructor-001";
+
+  // 배정된 과정 목록
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
+  const [coursesLoading, setCoursesLoading] = useState(true);
+
+  // 강의 콘솔 상태
+  const [lesson, setLesson] = useState<LessonContext>(() => makeBlankLesson(userId));
   const [quizActivating, setQuizActivating] = useState(false);
   const [quizMsg, setQuizMsg] = useState("");
+  const [consoleOpen, setConsoleOpen] = useState(false);
 
+  // 배정 과정 로드
   useEffect(() => {
-    setLesson((prev) => ({
-      ...prev,
-      lesson_id: `lesson-${uuidv4().slice(0, 8)}`,
-      metadata: {
-        ...prev.metadata,
-        instructor_id: (session?.user as { user_id?: string })?.user_id ?? "instructor-001",
-        timestamp: new Date().toISOString(),
-      },
-    }));
-  }, [session]);
+    if (!token) return;
+    getMyCourses(token)
+      .then(setCourses)
+      .catch(() => {})
+      .finally(() => setCoursesLoading(false));
+  }, [token]);
+
+  // 과정 선택 후 콘솔 진입
+  const handleStartLesson = (course: Course) => {
+    setSelectedCourse(course);
+    setLesson(makeBlankLesson(userId));
+    setConsoleOpen(true);
+  };
 
   const handleAnalysisComplete = useCallback((result: AnalysisResult) => {
     setLesson((prev) => ({
@@ -87,11 +101,7 @@ export default function InstructorConsolePage() {
 
   const newLesson = () => {
     if (confirm("현재 편집 내용이 초기화됩니다. 계속하시겠습니까?")) {
-      setLesson({
-        ...makeBlankLesson(),
-        lesson_id: `lesson-${uuidv4().slice(0, 8)}`,
-        metadata: { ...makeBlankLesson().metadata, timestamp: new Date().toISOString() },
-      });
+      setLesson(makeBlankLesson(userId));
     }
   };
 
@@ -109,12 +119,65 @@ export default function InstructorConsolePage() {
     }
   };
 
+  // ── 과정 선택 화면 ──────────────────────────────────────────────────────
+  if (!consoleOpen) {
+    return (
+      <div className="max-w-screen-xl mx-auto px-6 py-6 flex flex-col gap-6">
+        <div>
+          <h1 className="text-lg font-bold">강의 콘솔</h1>
+          <p className="text-slate-400 text-sm mt-0.5">수업을 시작할 과정을 선택하세요.</p>
+        </div>
+
+        {coursesLoading ? (
+          <p className="text-slate-500 text-sm animate-pulse">과정 목록을 불러오는 중…</p>
+        ) : courses.length === 0 ? (
+          <div className="card text-center py-10">
+            <p className="text-slate-400 text-sm">배정된 과정이 없습니다.</p>
+            <p className="text-slate-600 text-xs mt-1">운영자에게 과정 배정을 요청하세요.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {courses.map((c) => (
+              <div key={c.id} className="card flex flex-col gap-3">
+                <div>
+                  <p className="font-semibold">{c.title}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">{c.description || "설명 없음"}</p>
+                  <span className="badge bg-slate-700 text-slate-400 text-xs mt-2">
+                    {c.duration_months}개월
+                  </span>
+                </div>
+                <button
+                  className="btn-primary text-sm w-full mt-auto"
+                  onClick={() => handleStartLesson(c)}
+                >
+                  수업 시작
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── 강의 콘솔 화면 ──────────────────────────────────────────────────────
   return (
     <div className="max-w-screen-xl mx-auto px-6 py-6 flex flex-col gap-6">
       {/* 헤더 */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-bold">강의 콘솔</h1>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setConsoleOpen(false)}
+              className="text-slate-400 hover:text-slate-200 text-sm transition-colors"
+            >
+              ← 과정 목록
+            </button>
+            {selectedCourse && (
+              <span className="badge bg-blue-900/40 text-blue-300 text-xs">{selectedCourse.title}</span>
+            )}
+          </div>
+          <h1 className="text-lg font-bold mt-1">강의 콘솔</h1>
           <p className="text-slate-400 text-sm mt-0.5">
             STT로 강의를 받아적고, 수업 종료 후 지식 카드를 자동 생성하세요.
           </p>
@@ -122,9 +185,7 @@ export default function InstructorConsolePage() {
         <div className="flex gap-2">
           <button
             className={`text-sm px-4 py-2 rounded-lg font-semibold transition-colors ${
-              quizActivating
-                ? "bg-yellow-700 text-yellow-200 cursor-wait"
-                : "bg-yellow-600 hover:bg-yellow-500 text-white"
+              quizActivating ? "bg-yellow-700 text-yellow-200 cursor-wait" : "bg-yellow-600 hover:bg-yellow-500 text-white"
             }`}
             onClick={handleActivateQuiz}
             disabled={quizActivating || !lesson.lesson_id}
@@ -140,15 +201,15 @@ export default function InstructorConsolePage() {
 
       {quizMsg && (
         <p className={`text-xs px-3 py-2 rounded-lg ${
-          quizMsg.startsWith("오류") ? "bg-red-950/30 text-red-300 border border-red-500/30" : "bg-emerald-950/30 text-emerald-300 border border-emerald-500/30"
+          quizMsg.startsWith("오류")
+            ? "bg-red-950/30 text-red-300 border border-red-500/30"
+            : "bg-emerald-950/30 text-emerald-300 border border-emerald-500/30"
         }`}>
           {quizMsg}
         </p>
       )}
 
-      {/* 메인 2열 레이아웃 */}
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_380px] gap-6">
-        {/* 왼쪽 */}
         <div className="flex flex-col gap-6">
           <SttPanel
             onAnalysisComplete={handleAnalysisComplete}
@@ -158,8 +219,6 @@ export default function InstructorConsolePage() {
           />
           <KnowledgeCardEditor lesson={lesson} onChange={setLesson} />
         </div>
-
-        {/* 오른쪽 */}
         <div className="flex flex-col gap-6">
           <CurriculumPanel lesson={lesson} onChange={setLesson} />
           <DeployButton lesson={lesson} />
@@ -167,7 +226,6 @@ export default function InstructorConsolePage() {
         </div>
       </div>
 
-      {/* 하단: 실시간 학급 현황 */}
       <ClassOverview pollInterval={15_000} />
     </div>
   );

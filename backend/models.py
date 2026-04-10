@@ -52,7 +52,23 @@ class Course(Base):
     title: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str] = mapped_column(String, default="")
     duration_months: Mapped[int] = mapped_column(Integer, default=1)
+    instructor_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("user_roles.user_id"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class CourseInstructor(Base):
+    """과정-강사 N:M 중간 테이블 (강사가 여러 과정 담당 가능)."""
+    __tablename__ = "course_instructors"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    course_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("courses.id"), nullable=False, index=True
+    )
+    instructor_id: Mapped[str] = mapped_column(
+        String, ForeignKey("user_roles.user_id"), nullable=False, index=True
+    )
 
 
 class Unit(Base):

@@ -17,6 +17,12 @@ export interface Course {
   title: string;
   description: string;
   duration_months: number;
+  instructor_id?: string | null;
+}
+
+export interface CourseInstructor {
+  course_id: number;
+  instructor_id: string;
 }
 
 export interface Unit {
@@ -194,4 +200,47 @@ export interface AnalysisResult {
   topic: string;
   keywords: string[];
   core_concepts: { title: string; summary: string }[];
+}
+
+// ── 역할별 유저 ───────────────────────────────────────────────────────────
+
+export interface UserBasic {
+  user_id: string;
+  name: string;
+  email: string;
+  role: string;
+}
+
+// 멘토 학생 목록 아이템 (enriched)
+export interface MentorStudentItem extends UserBasic {
+  session_count: number;
+  career_identity: string[];
+  aptitude: AptitudeScores;
+  top_category: string | null;
+  last_updated: string | null;
+}
+
+// 멘토 학생 상세
+export interface RedFlagNotification {
+  id: number;
+  title: string;
+  message: string;
+  is_read: boolean;
+  created_at: string;
+}
+
+export interface SessionSummary {
+  session_id: string;
+  timestamp_start: string;
+  session_aptitude: SessionAptitude;
+}
+
+export interface MentorStudentDetail {
+  user_id: string;
+  name: string;
+  email: string;
+  profile: UserProfile | null;
+  recent_sessions: SessionSummary[];
+  micro_projects: MicroProject[];
+  red_flags: RedFlagNotification[];
 }

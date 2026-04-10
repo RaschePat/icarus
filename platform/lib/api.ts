@@ -14,6 +14,17 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
+/** JWT 인증 헤더 포함 fetch */
+async function apiFetchAuth<T>(path: string, token: string, options?: RequestInit): Promise<T> {
+  return apiFetch<T>(path, {
+    ...options,
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      ...options?.headers,
+    },
+  });
+}
+
 // ── 인증 ─────────────────────────────────────────────────────────────────
 
 export interface LoginResponse {
@@ -68,14 +79,32 @@ export async function activateQuiz(lessonId: string) {
 
 // ── 과정 / 단원 ───────────────────────────────────────────────────────────
 
-import type { Course, Unit } from "./types";
+import type { Course, Unit, UserBasic, MentorStudentItem, MentorStudentDetail } from "./types";
 
 export async function getCourses(): Promise<Course[]> {
   return apiFetch("/courses");
 }
 
+/** 강사 본인이 배정된 과정 목록 (JWT 필수) */
+export async function getMyCourses(token: string): Promise<Course[]> {
+  return apiFetchAuth("/courses/my", token);
+}
+
 export async function createCourse(data: { title: string; description: string; duration_months: number }) {
   return apiFetch<Course>("/courses", { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function assignInstructor(courseId: number, instructorId: string, token: string) {
+  return apiFetchAuth(`/courses/${courseId}/assign-instructor`, token, {
+    method: "POST",
+    body: JSON.stringify({ instructor_id: instructorId }),
+  });
+}
+
+export async function removeInstructor(courseId: number, instructorId: string, token: string) {
+  return apiFetchAuth(`/courses/${courseId}/instructors/${instructorId}`, token, {
+    method: "DELETE",
+  });
 }
 
 export async function getUnits(courseId: number): Promise<Unit[]> {
@@ -125,12 +154,20 @@ export async function getUserProfile(userId: string): Promise<UserProfile> {
   return apiFetch(`/user/profile/${userId}`);
 }
 
+// ── 역할별 유저 목록 (운영자 전용) ───────────────────────────────────────
+
+export async function getUsersByRole(role: string, token: string): Promise<UserBasic[]> {
+  return apiFetchAuth(`/users?role=${role}`, token);
+}
+
 // ── 멘토 ─────────────────────────────────────────────────────────────────
 
-export async function getMentorStudents(mentorId: string) {
-  return apiFetch<{ user_id: string; name: string; email: string }[]>(
-    `/mentor/students?mentor_id=${mentorId}`
-  );
+export async function getMentorStudents(mentorId: string): Promise<MentorStudentItem[]> {
+  return apiFetch<MentorStudentItem[]>(`/mentor/students?mentor_id=${mentorId}`);
+}
+
+export async function getMentorStudentDetail(studentId: string): Promise<MentorStudentDetail> {
+  return apiFetch(`/mentor/students/${studentId}/detail`);
 }
 
 export async function addMentorStudent(mentorId: string, studentId: string) {

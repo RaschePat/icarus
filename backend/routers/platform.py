@@ -5,9 +5,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Annotated
 
 from database import get_db
-from models import LessonContext, MicroProject, PlatformNotification, MentorStudent, UserRole
+from models import (
+    LessonContext, MicroProject, PlatformNotification,
+    MentorStudent, UserRole, UserProfile, ActivityLog,
+)
+from deps import get_current_user
 
 router = APIRouter(tags=["platform"])
 
@@ -57,20 +62,14 @@ async def create_micro_project(body: MicroProjectCreate, db: AsyncSession = Depe
     db.add(row)
     await db.commit()
     await db.refresh(row)
-    return {
-        **row.__dict__,
-        "created_at": row.created_at.isoformat(),
-    }
+    return {**row.__dict__, "created_at": row.created_at.isoformat()}
 
 
 @router.get("/micro-projects/{user_id}", response_model=list[MicroProjectResponse])
 async def get_micro_projects(user_id: str, db: AsyncSession = Depends(get_db)):
     stmt = select(MicroProject).where(MicroProject.user_id == user_id).order_by(desc(MicroProject.created_at))
     rows = (await db.execute(stmt)).scalars().all()
-    return [
-        {**r.__dict__, "created_at": r.created_at.isoformat()}
-        for r in rows
-    ]
+    return [{**r.__dict__, "created_at": r.created_at.isoformat()} for r in rows]
 
 
 # ── 알림 ─────────────────────────────────────────────────────────────────
@@ -101,10 +100,7 @@ async def get_notifications(user_id: str, db: AsyncSession = Depends(get_db)):
         .limit(50)
     )
     rows = (await db.execute(stmt)).scalars().all()
-    return [
-        {**r.__dict__, "created_at": r.created_at.isoformat()}
-        for r in rows
-    ]
+    return [{**r.__dict__, "created_at": r.created_at.isoformat()} for r in rows]
 
 
 @router.post("/notifications", response_model=NotificationResponse, status_code=201)
@@ -126,6 +122,25 @@ async def mark_read(notification_id: int, db: AsyncSession = Depends(get_db)):
     return {"status": "ok"}
 
 
+# ── 역할별 유저 목록 (운영자 전용) ───────────────────────────────────────
+
+@router.get("/users")
+async def get_users_by_role(
+    role: str,
+    current_user: Annotated[dict, Depends(get_current_user)],
+    db: AsyncSession = Depends(get_db),
+):
+    """역할별 유저 목록 조회 (운영자 전용)."""
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="관리자 권한이 필요합니다.")
+    stmt = select(UserRole).where(UserRole.role == role).order_by(UserRole.name)
+    rows = (await db.execute(stmt)).scalars().all()
+    return [
+        {"user_id": r.user_id, "name": r.name, "email": r.email, "role": r.role}
+        for r in rows
+    ]
+
+
 # ── 멘토 학생 관리 ────────────────────────────────────────────────────────
 
 class MentorStudentAdd(BaseModel):
@@ -139,23 +154,138 @@ async def get_mentor_students(mentor_id: str, db: AsyncSession = Depends(get_db)
     stmt = select(MentorStudent).where(MentorStudent.mentor_id == mentor_id)
     relations = (await db.execute(stmt)).scalars().all()
     student_ids = [r.student_id for r in relations]
-
     if not student_ids:
         return []
 
-    # UserRole에서 학생 정보 조회
     students = []
     for sid in student_ids:
         stmt2 = select(UserRole).where(UserRole.user_id == sid)
         user = (await db.execute(stmt2)).scalar_one_or_none()
-        if user:
-            students.append({
-                "user_id": user.user_id,
-                "name": user.name,
-                "email": user.email,
-                "role": user.role,
-            })
+        if not user:
+            continue
+
+        # UserProfile 조회 (없으면 None)
+        profile = await db.get(UserProfile, sid)
+
+        students.append({
+            "user_id":          user.user_id,
+            "name":             user.name,
+            "email":            user.email,
+            "role":             user.role,
+            "session_count":    profile.session_count if profile else 0,
+            "career_identity":  profile.career_identity if profile else [],
+            "aptitude": {
+                "logic_avg":    profile.logic_avg    if profile else 0.0,
+                "planning_avg": profile.planning_avg if profile else 0.0,
+                "ux_avg":       profile.ux_avg       if profile else 0.0,
+                "data_avg":     profile.data_avg     if profile else 0.0,
+            },
+            "top_category": (
+                (profile.interest_profile or {}).get("top_category")
+                if profile else None
+            ),
+            "last_updated": profile.last_updated.isoformat() if profile and profile.last_updated else None,
+        })
     return students
+
+
+@router.get("/mentor/students/{student_id}/detail")
+async def get_mentor_student_detail(
+    student_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """멘토가 특정 학생 상세 조회 — user_profile, activity_logs 최근 5개, micro_projects, RED_FLAG 이력."""
+    # 기본 정보
+    stmt_user = select(UserRole).where(UserRole.user_id == student_id)
+    user = (await db.execute(stmt_user)).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="학생을 찾을 수 없습니다.")
+
+    # UserProfile
+    profile = await db.get(UserProfile, student_id)
+
+    # 최근 활동 로그 5개
+    stmt_logs = (
+        select(ActivityLog)
+        .where(ActivityLog.user_id == student_id)
+        .order_by(desc(ActivityLog.timestamp_start))
+        .limit(5)
+    )
+    logs = (await db.execute(stmt_logs)).scalars().all()
+    recent_sessions = [
+        {
+            "session_id":      log.session_id,
+            "timestamp_start": log.timestamp_start.isoformat(),
+            "session_aptitude": log.session_aptitude,
+        }
+        for log in logs
+    ]
+
+    # 마이크로 프로젝트
+    stmt_proj = (
+        select(MicroProject)
+        .where(MicroProject.user_id == student_id)
+        .order_by(desc(MicroProject.created_at))
+    )
+    projects = (await db.execute(stmt_proj)).scalars().all()
+    micro_projects = [
+        {
+            "id":                p.id,
+            "user_id":           p.user_id,
+            "session_id":        p.session_id,
+            "name":              p.name,
+            "template":          p.template,
+            "interest_category": p.interest_category,
+            "harness_total":     p.harness_total,
+            "harness_filled":    p.harness_filled,
+            "created_at":        p.created_at.isoformat(),
+        }
+        for p in projects
+    ]
+
+    # RED_FLAG 알림 이력
+    stmt_rf = (
+        select(PlatformNotification)
+        .where(
+            PlatformNotification.user_id == student_id,
+            PlatformNotification.type == "RED_FLAG",
+        )
+        .order_by(desc(PlatformNotification.created_at))
+        .limit(10)
+    )
+    red_flags = (await db.execute(stmt_rf)).scalars().all()
+    red_flag_list = [
+        {
+            "id":         rf.id,
+            "title":      rf.title,
+            "message":    rf.message,
+            "is_read":    rf.is_read,
+            "created_at": rf.created_at.isoformat(),
+        }
+        for rf in red_flags
+    ]
+
+    return {
+        "user_id": user.user_id,
+        "name":    user.name,
+        "email":   user.email,
+        "profile": {
+            "user_id": profile.user_id,
+            "cumulative_aptitude": {
+                "logic_avg":    profile.logic_avg,
+                "planning_avg": profile.planning_avg,
+                "ux_avg":       profile.ux_avg,
+                "data_avg":     profile.data_avg,
+            },
+            "session_count":   profile.session_count,
+            "career_identity": profile.career_identity,
+            "interest_profile": profile.interest_profile,
+            "last_updated":    profile.last_updated.isoformat(),
+        } if profile else None,
+        "recent_sessions": recent_sessions,
+        "micro_projects":  micro_projects,
+        "red_flags":       red_flag_list,
+    }
 
 
 @router.post("/mentor/students", status_code=201)
