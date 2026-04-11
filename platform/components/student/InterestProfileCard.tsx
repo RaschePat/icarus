@@ -23,10 +23,15 @@ function getColor(category: string) {
 
 /** keyword_freq에서 빈도 기반 시각 속성을 계산합니다 */
 function buildCloudItems(
-  keyword_freq: Record<string, number>,
-  top_keywords: string[],
+  keyword_freq: Record<string, number> | undefined | null,
+  top_keywords: string[] | undefined | null,
   rgb: string,
 ) {
+  // 기본값 처리
+  if (!keyword_freq || !top_keywords || top_keywords.length === 0) {
+    return [];
+  }
+
   const items = top_keywords
     .filter((kw) => kw in keyword_freq)
     .map((kw) => ({ kw, freq: keyword_freq[kw] }));
@@ -51,9 +56,15 @@ function buildCloudItems(
 }
 
 export default function InterestProfileCard({ interest }: Props) {
-  const { category_counts, top_category, top_keywords, keyword_freq } = interest;
+  // 모든 필드에 기본값 처리
+  const {
+    category_counts = {},
+    top_category,
+    top_keywords = [],
+    keyword_freq,
+  } = interest || {};
 
-  const sortedCategories = Object.entries(category_counts).sort((a, b) => b[1] - a[1]);
+  const sortedCategories = Object.entries(category_counts || {}).sort((a, b) => b[1] - a[1]);
   const maxCount   = sortedCategories[0]?.[1] ?? 1;
   const topColor   = top_category ? getColor(top_category) : getColor("기타");
   const cloudItems = buildCloudItems(keyword_freq, top_keywords, topColor.rgb);
@@ -73,22 +84,26 @@ export default function InterestProfileCard({ interest }: Props) {
       {/* 카테고리별 바 차트 */}
       <div className="flex flex-col gap-2">
         <p className="text-xs text-slate-500 mb-1">도메인 분포</p>
-        {sortedCategories.map(([cat, count]) => {
-          const { bar, text } = getColor(cat);
-          const widthPct = Math.round((count / maxCount) * 100);
-          return (
-            <div key={cat} className="flex items-center gap-2">
-              <span className={`text-xs w-12 shrink-0 text-right ${text}`}>{cat}</span>
-              <div className="flex-1 bg-slate-800 rounded-full h-2 overflow-hidden">
-                <div
-                  className={`h-2 rounded-full ${bar} transition-all`}
-                  style={{ width: `${widthPct}%` }}
-                />
+        {sortedCategories.length > 0 ? (
+          sortedCategories.map(([cat, count]) => {
+            const { bar, text } = getColor(cat);
+            const widthPct = Math.round((count / maxCount) * 100);
+            return (
+              <div key={cat} className="flex items-center gap-2">
+                <span className={`text-xs w-12 shrink-0 text-right ${text}`}>{cat}</span>
+                <div className="flex-1 bg-slate-800 rounded-full h-2 overflow-hidden">
+                  <div
+                    className={`h-2 rounded-full ${bar} transition-all`}
+                    style={{ width: `${widthPct}%` }}
+                  />
+                </div>
+                <span className="text-xs text-slate-500 w-4 text-right">{count}</span>
               </div>
-              <span className="text-xs text-slate-500 w-4 text-right">{count}</span>
-            </div>
-          );
-        })}
+            );
+          })
+        ) : (
+          <p className="text-xs text-slate-500 py-2">데이터 없음</p>
+        )}
       </div>
 
       {/* 핵심 키워드 태그 클라우드 */}
