@@ -104,6 +104,43 @@ async def create_course(body: CourseCreate, db: AsyncSession = Depends(get_db)):
     return row
 
 
+@router.delete("/{course_id}", status_code=204)
+async def delete_course(course_id: int, db: AsyncSession = Depends(get_db)):
+    """과정을 삭제합니다. 관련된 모든 데이터도 함께 삭제됩니다."""
+    course = await db.get(Course, course_id)
+    if not course:
+        raise HTTPException(status_code=404, detail="과정을 찾을 수 없습니다.")
+
+    # 관련된 강사 배정 삭제
+    stmt_instructors = select(CourseInstructor).where(CourseInstructor.course_id == course_id)
+    instructors = (await db.execute(stmt_instructors)).scalars().all()
+    for instructor in instructors:
+        await db.delete(instructor)
+
+    # 관련된 학생 등록 삭제
+    stmt_students = select(StudentCourse).where(StudentCourse.course_id == course_id)
+    students = (await db.execute(stmt_students)).scalars().all()
+    for student in students:
+        await db.delete(student)
+
+    # 관련된 단원 및 섹션 삭제
+    stmt_units = select(Unit).where(Unit.course_id == course_id)
+    units = (await db.execute(stmt_units)).scalars().all()
+    for unit in units:
+        # 각 단원의 섹션 삭제
+        stmt_lessons = select(Lesson).where(Lesson.unit_id == unit.id)
+        lessons = (await db.execute(stmt_lessons)).scalars().all()
+        for lesson in lessons:
+            await db.delete(lesson)
+        # 단원 삭제
+        await db.delete(unit)
+
+    # 과정 삭제
+    await db.delete(course)
+    await db.commit()
+    return None
+
+
 # ── 강사 배정 엔드포인트 ──────────────────────────────────────────────────
 
 @router.post("/{course_id}/assign-instructor", status_code=201)

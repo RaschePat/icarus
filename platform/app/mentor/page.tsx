@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { getMentorStudents, addMentorStudent, removeMentorStudent, getUsersByRole, getStudentCourses } from "@/lib/api";
 import Link from "next/link";
+import CareerIdentityBadge from "@/components/student/CareerIdentityBadge";
 import type { MentorStudentItem, AptitudeScores, UserBasic } from "@/lib/types";
 
 function AptitudeMini({ aptitude }: { aptitude: AptitudeScores }) {
@@ -205,16 +206,7 @@ export default function MentorPage() {
               )}
 
               {s.career_identity.length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {s.career_identity.slice(0, 3).map((tag) => (
-                    <span key={tag} className="badge bg-emerald-900/30 text-emerald-400 text-xs">
-                      {tag}
-                    </span>
-                  ))}
-                  {s.career_identity.length > 3 && (
-                    <span className="text-xs text-slate-600">+{s.career_identity.length - 3}</span>
-                  )}
-                </div>
+                <CareerIdentityBadge tags={s.career_identity} size="sm" />
               )}
 
               {/* 배정된 과정 */}

@@ -452,6 +452,59 @@ async def list_lesson_students(lesson_id: str, db: AsyncSession = Depends(get_db
     return [{"student_id": r.student_id, "enrolled_at": r.enrolled_at.isoformat()} for r in rows]
 
 
+# ── 사용자 프로필 관리 ──────────────────────────────────────────────────
+
+class UserProfileCreate(BaseModel):
+    logic_avg: float = 0.0
+    planning_avg: float = 0.0
+    ux_avg: float = 0.0
+    data_avg: float = 0.0
+    session_count: int = 0
+    career_identity: list = []
+    interest_profile: dict = {}
+
+
+@router.post("/user/profile/{user_id}", status_code=201)
+async def create_or_update_user_profile(user_id: str, body: UserProfileCreate, db: AsyncSession = Depends(get_db)):
+    """사용자 프로필을 생성하거나 업데이트합니다."""
+    profile = await db.get(UserProfile, user_id)
+    if profile:
+        # 기존 프로필 업데이트
+        profile.logic_avg = body.logic_avg
+        profile.planning_avg = body.planning_avg
+        profile.ux_avg = body.ux_avg
+        profile.data_avg = body.data_avg
+        profile.session_count = body.session_count
+        profile.career_identity = body.career_identity
+        profile.interest_profile = body.interest_profile
+    else:
+        # 새 프로필 생성
+        profile = UserProfile(
+            user_id=user_id,
+            logic_avg=body.logic_avg,
+            planning_avg=body.planning_avg,
+            ux_avg=body.ux_avg,
+            data_avg=body.data_avg,
+            session_count=body.session_count,
+            career_identity=body.career_identity,
+            interest_profile=body.interest_profile,
+        )
+        db.add(profile)
+
+    await db.commit()
+    await db.refresh(profile)
+    return {
+        "user_id": profile.user_id,
+        "logic_avg": profile.logic_avg,
+        "planning_avg": profile.planning_avg,
+        "ux_avg": profile.ux_avg,
+        "data_avg": profile.data_avg,
+        "session_count": profile.session_count,
+        "career_identity": profile.career_identity,
+        "interest_profile": profile.interest_profile,
+    }
+
+
 # ── 퀴즈 활성화 (강사 트리거) ─────────────────────────────────────────────
 
 @router.patch("/lesson/{lesson_id}/quiz-active")
