@@ -21,12 +21,54 @@ router = APIRouter(tags=["platform"])
 # ── Wing 폴링: 오늘 배포된 lesson_id ──────────────────────────────────────
 
 @router.get("/today-lesson")
-async def today_lesson(db: AsyncSession = Depends(get_db)):
-    """가장 최근 배포된 lesson_id 반환 (Wing 30초 폴링용)."""
-    stmt = select(LessonContext).order_by(desc(LessonContext.created_at)).limit(1)
-    row = (await db.execute(stmt)).scalar_one_or_none()
+async def today_lesson(
+    current_user: Annotated[dict, Depends(get_current_user)],
+    db: AsyncSession = Depends(get_db),
+):
+    """현재 로그인한 학생의 수강 과정 기준으로 오늘 활성화된 lesson_id 반환."""
+    user_id = current_user.get("user_id")
+    if not user_id:
+        return {"lesson_id": None}
+
+    # 학생이 수강 중인 과정 목록 조회
+    stmt_courses = select(StudentCourse).where(StudentCourse.student_id == user_id)
+    student_courses = (await db.execute(stmt_courses)).scalars().all()
+
+    if not student_courses:
+        return {"lesson_id": None}
+
+    course_ids = [sc.course_id for sc in student_courses]
+
+    # 그 과정들의 모든 단원 조회
+    stmt_units = select(Unit).where(Unit.course_id.in_(course_ids))
+    units = (await db.execute(stmt_units)).scalars().all()
+
+    if not units:
+        return {"lesson_id": None}
+
+    unit_ids = [u.id for u in units]
+
+    # 그 단원들의 모든 Lesson 조회
+    stmt_lessons = select(Lesson).where(Lesson.unit_id.in_(unit_ids))
+    lessons = (await db.execute(stmt_lessons)).scalars().all()
+
+    if not lessons:
+        return {"lesson_id": None}
+
+    lesson_ids = [l.lesson_id for l in lessons]
+
+    # 그 lesson_id들 중 가장 최근 배포된 것 찾기
+    stmt_context = (
+        select(LessonContext)
+        .where(LessonContext.lesson_id.in_(lesson_ids))
+        .order_by(desc(LessonContext.created_at))
+        .limit(1)
+    )
+    row = (await db.execute(stmt_context)).scalar_one_or_none()
+
     if not row:
         return {"lesson_id": None}
+
     return {"lesson_id": row.lesson_id}
 
 

@@ -55,6 +55,31 @@ export class ClaudeClient {
     return this._anthropic;
   }
 
+  private async _sendToBackend(event: { event_type: string; data: Record<string, unknown> }) {
+    const config = vscode.workspace.getConfiguration("wing");
+    const backendUrl: string = config.get("backendUrl") ?? "http://localhost:8000";
+    const userId: string = config.get("userId") ?? "";
+
+    if (!userId || !backendUrl) return;
+
+    try {
+      const sessionId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      await fetch(`${backendUrl}/v1/activity/log`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: sessionId,
+          user_id: userId,
+          event_type: event.event_type,
+          data: event.data,
+          timestamp: new Date().toISOString(),
+        }),
+      });
+    } catch {
+      // 조용히 무시
+    }
+  }
+
   async chat(userText: string, history: Message[]): Promise<string> {
     const client = this._getClient();
 
@@ -95,13 +120,15 @@ export class ClaudeClient {
     }
 
     // WING_REQUEST 이벤트 기록
-    await this._mcp.writeActivityLog({
+    const wingEvent = {
       event_type: "WING_REQUEST",
       data: {
         category,
         prompt_summary: userText.slice(0, 100),
       },
-    }).catch(() => {/* MCP 미연결 시 무시 */});
+    };
+    await this._mcp.writeActivityLog(wingEvent).catch(() => {/* MCP 미연결 시 무시 */});
+    await this._sendToBackend(wingEvent);
 
     return message;
   }

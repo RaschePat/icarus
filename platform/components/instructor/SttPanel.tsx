@@ -177,6 +177,7 @@ export default function SttPanel({ onAnalysisComplete, lessonTopic, lessonKeywor
   // ── 초기화 ─────────────────────────────────────────────────────────────
 
   const clearAll = () => {
+    if (!confirm("정말 초기화할까요?")) return;
     if (isListening) stopListening();
     setSentences([]);
     setInterim("");

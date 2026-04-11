@@ -5,9 +5,108 @@ import { useSession } from "next-auth/react";
 import {
   getCourses, createCourse, getUnits, createUnit,
   assignInstructor, removeInstructor, getUsersByRole, getSections,
-  createSection, deleteUnit, deleteSection, updateUnitOrder, updateSectionOrder,
+  createSection, deleteUnit, deleteSection, updateUnitOrder,
 } from "@/lib/api";
 import type { Course, Unit, UserBasic, Section } from "@/lib/types";
+import {
+  DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors,
+  DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+
+function DraggableUnitCard({
+  unit, selected, sections, sectionInputs, setSectionInputs,
+  creatingSection, onAddSection, onDeleteSection, onDeleteUnit
+}: {
+  unit: Unit; selected: Course; sections: Section[]; sectionInputs: Record<number, string>;
+  setSectionInputs: any; creatingSection: number | null; onAddSection: (unitId: number) => void;
+  onDeleteSection: (courseId: number, unitId: number, sectionId: string, title: string) => void;
+  onDeleteUnit: (courseId: number, unitId: number, title: string) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: unit.id,
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  const unitLabel = unit.order_index === 0 ? "0. 오리엔테이션" : `${unit.order_index}. `;
+
+  return (
+    <div ref={setNodeRef} style={style} className="bg-slate-800/40 border border-slate-700 rounded-lg p-3 flex flex-col gap-2">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 cursor-grab active:cursor-grabbing flex-1" {...attributes} {...listeners}>
+          <span className="text-slate-400">⋮⋮</span>
+          <div>
+            <p className="font-semibold text-sm">{unitLabel}{unit.title}</p>
+            <p className="text-xs text-slate-500">순서: {unit.order_index}</p>
+          </div>
+        </div>
+        <button
+          className="text-xs px-1.5 py-1 rounded bg-red-900/40 text-red-400 hover:bg-red-900/60"
+          onClick={() => onDeleteUnit(selected.id, unit.id, unit.title)}
+        >
+          ✕
+        </button>
+      </div>
+
+      {/* 섹션 추가 폼 */}
+      <div className="flex gap-1">
+        <input
+          type="text"
+          className="input text-xs flex-1"
+          placeholder="섹션명 (예: 변수와 자료형)"
+          value={sectionInputs[unit.id] || ""}
+          onChange={(e) => setSectionInputs((prev: any) => ({ ...prev, [unit.id]: e.target.value }))}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              onAddSection(unit.id);
+            }
+          }}
+        />
+        <button
+          className="btn-primary text-xs px-2 shrink-0"
+          onClick={() => onAddSection(unit.id)}
+          disabled={creatingSection === unit.id}
+        >
+          {creatingSection === unit.id ? "중…" : "+"}
+        </button>
+      </div>
+
+      {/* 섹션 목록 */}
+      <div className="flex flex-col gap-1 mt-2 pt-2 border-t border-slate-700/50">
+        {sections.length === 0 ? (
+          <p className="text-xs text-slate-500 py-1">섹션이 없습니다.</p>
+        ) : (
+          sections
+            .sort((a, b) => a.section_order - b.section_order)
+            .map((s, sidx) => {
+              const sectionLabel = `${sidx + 1}강`;
+              return (
+                <div key={s.lesson_id} className="flex items-center justify-between gap-1 bg-slate-700/50 px-2 py-1 rounded text-xs">
+                  <span className="text-slate-300">{sectionLabel}. {s.section_title || `섹션 ${s.section_order}`}</span>
+                  <button
+                    className="text-red-400 hover:text-red-300"
+                    onClick={() => onDeleteSection(selected.id, unit.id, s.lesson_id, s.section_title || `섹션 ${s.section_order}`)}
+                  >
+                    ✕
+                  </button>
+                </div>
+              );
+            })
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function AdminCoursesPage() {
   const { data: session } = useSession();
@@ -19,25 +118,26 @@ export default function AdminCoursesPage() {
   const [instructors, setInstructors] = useState<UserBasic[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // 과정 생성 폼
   const [courseTitle, setCourseTitle] = useState("");
   const [courseDesc, setCourseDesc] = useState("");
   const [courseDuration, setCourseDuration] = useState(3);
   const [selectedInstructorId, setSelectedInstructorId] = useState("");
-
-  // 단원 생성 폼
   const [unitTitle, setUnitTitle] = useState("");
 
-  // 강사 배정 폼
   const [assignInstructorId, setAssignInstructorId] = useState("");
   const [assigning, setAssigning] = useState(false);
   const [reassigning, setReassigning] = useState(false);
   const [msg, setMsg] = useState("");
 
-  // 섹션 캐시 & 폼
   const [sectionMap, setSectionMap] = useState<Record<number, Section[]>>({});
   const [sectionInputs, setSectionInputs] = useState<Record<number, string>>({});
   const [creatingSection, setCreatingSection] = useState<number | null>(null);
+
+  // 드래그앤드롭
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   const loadCourses = () =>
     getCourses().then(setCourses).catch(() => {}).finally(() => setLoading(false));
@@ -52,12 +152,24 @@ export default function AdminCoursesPage() {
     }
   }, [token]);
 
-  const loadUnits = (c: Course) => {
+  const loadUnits = async (c: Course) => {
     setSelected(c);
     setAssignInstructorId("");
     setReassigning(false);
     setSectionMap({});
-    getUnits(c.id).then(setUnits).catch(() => {});
+    try {
+      const fetchedUnits = await getUnits(c.id);
+      setUnits(fetchedUnits);
+      // 모든 단원의 섹션을 미리 로드
+      const newSectionMap: Record<number, Section[]> = {};
+      for (const unit of fetchedUnits) {
+        const sections = await getSections(c.id, unit.id).catch(() => [] as Section[]);
+        newSectionMap[unit.id] = sections;
+      }
+      setSectionMap(newSectionMap);
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   const handleAddCourse = async () => {
@@ -106,24 +218,8 @@ export default function AdminCoursesPage() {
     }
   };
 
-  const handleMoveUnit = async (unitId: number, direction: "up" | "down") => {
-    const unit = units.find((u) => u.id === unitId);
-    if (!unit || !selected) return;
-
-    const newOrder = direction === "up" ? unit.order_index - 1 : unit.order_index + 1;
-    if (newOrder < 0 || newOrder >= units.length) return;
-
-    setMsg("");
-    try {
-      await updateUnitOrder(selected.id, unitId, newOrder);
-      loadUnits(selected);
-    } catch (e) {
-      setMsg(`오류: ${(e as Error).message}`);
-    }
-  };
-
   const handleAddSection = async (unitId: number) => {
-    if (!selected || !sectionInputs[unitId]?.trim()) return;
+    if (!selected || !sectionInputs[unitId]?.trim() || creatingSection === unitId) return;
     setCreatingSection(unitId);
     setMsg("");
     try {
@@ -157,21 +253,27 @@ export default function AdminCoursesPage() {
     }
   };
 
-  const handleMoveSection = async (courseId: number, unitId: number, sectionId: string, direction: "up" | "down") => {
-    const sections = sectionMap[unitId] || [];
-    const section = sections.find((s) => s.lesson_id === sectionId);
-    if (!section) return;
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id || !selected) return;
 
-    const newOrder = direction === "up" ? section.section_order - 1 : section.section_order + 1;
-    if (newOrder < 0 || newOrder >= sections.length) return;
+    const oldIndex = units.findIndex((u) => u.id === active.id);
+    const newIndex = units.findIndex((u) => u.id === over.id);
+
+    if (oldIndex === newIndex) return;
+
+    const newUnits = arrayMove(units, oldIndex, newIndex);
+    setUnits(newUnits);
 
     setMsg("");
     try {
-      await updateSectionOrder(courseId, unitId, sectionId, newOrder);
-      const updated = await getSections(courseId, unitId).catch(() => [] as Section[]);
-      setSectionMap((prev) => ({ ...prev, [unitId]: updated }));
+      for (let i = 0; i < newUnits.length; i++) {
+        await updateUnitOrder(selected.id, newUnits[i].id, i);
+      }
+      setMsg(`✓ 단원 순서가 변경되었습니다.`);
     } catch (e) {
       setMsg(`오류: ${(e as Error).message}`);
+      loadUnits(selected);
     }
   };
 
@@ -221,7 +323,6 @@ export default function AdminCoursesPage() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* ── 과정 목록 + 생성 ── */}
         <div className="card flex flex-col gap-4">
           <h2 className="font-semibold text-sm">과정 관리</h2>
 
@@ -275,7 +376,6 @@ export default function AdminCoursesPage() {
           </div>
         </div>
 
-        {/* ── 단원 + 강사 배정 ── */}
         <div className="flex flex-col gap-4">
           {selected && (
             <div className="card flex flex-col gap-3">
@@ -325,93 +425,34 @@ export default function AdminCoursesPage() {
                   <input className="input text-sm flex-1" placeholder="단원 제목 (예: 1단원 변수와 자료형)" value={unitTitle} onChange={(e) => setUnitTitle(e.target.value)} />
                   <button className="btn-primary text-sm px-3 shrink-0" onClick={handleAddUnit}>추가</button>
                 </div>
-                <div className="flex flex-col gap-3">
-                  {units.sort((a, b) => a.order_index - b.order_index).map((u, idx) => (
-                    <div key={u.id} className="bg-slate-800/40 border border-slate-700 rounded-lg p-3 flex flex-col gap-2">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-semibold text-sm">{u.title}</p>
-                          <p className="text-xs text-slate-500">순서: {u.order_index}</p>
-                        </div>
-                        <div className="flex gap-1">
-                          <button
-                            className="text-xs px-1.5 py-1 rounded bg-slate-700 hover:bg-slate-600"
-                            onClick={() => handleMoveUnit(u.id, "up")}
-                            disabled={idx === 0}
-                          >
-                            ↑
-                          </button>
-                          <button
-                            className="text-xs px-1.5 py-1 rounded bg-slate-700 hover:bg-slate-600"
-                            onClick={() => handleMoveUnit(u.id, "down")}
-                            disabled={idx === units.length - 1}
-                          >
-                            ↓
-                          </button>
-                          <button
-                            className="text-xs px-1.5 py-1 rounded bg-red-900/40 text-red-400 hover:bg-red-900/60"
-                            onClick={() => handleDeleteUnit(selected.id, u.id, u.title)}
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* 섹션 추가 폼 */}
-                      <div className="flex gap-1">
-                        <input
-                          type="text"
-                          className="input text-xs flex-1"
-                          placeholder="섹션명 (예: 1-1강)"
-                          value={sectionInputs[u.id] || ""}
-                          onChange={(e) => setSectionInputs((prev) => ({ ...prev, [u.id]: e.target.value }))}
-                          onKeyDown={(e) => e.key === "Enter" && handleAddSection(u.id)}
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleDragEnd}
+                >
+                  <SortableContext
+                    items={units.map((u) => u.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <div className="flex flex-col gap-3">
+                      {units.sort((a, b) => a.order_index - b.order_index).map((u) => (
+                        <DraggableUnitCard
+                          key={u.id}
+                          unit={u}
+                          selected={selected}
+                          sections={sectionMap[u.id] || []}
+                          sectionInputs={sectionInputs}
+                          setSectionInputs={setSectionInputs}
+                          creatingSection={creatingSection}
+                          onAddSection={handleAddSection}
+                          onDeleteSection={handleDeleteSection}
+                          onDeleteUnit={handleDeleteUnit}
                         />
-                        <button
-                          className="btn-primary text-xs px-2 shrink-0"
-                          onClick={() => handleAddSection(u.id)}
-                          disabled={creatingSection === u.id}
-                        >
-                          {creatingSection === u.id ? "중…" : "+"}
-                        </button>
-                      </div>
-
-                      {/* 섹션 목록 */}
-                      {(sectionMap[u.id] || []).length > 0 && (
-                        <div className="flex flex-col gap-1 mt-2 pt-2 border-t border-slate-700/50">
-                          {sectionMap[u.id]!.sort((a, b) => a.section_order - b.section_order).map((s, sidx) => (
-                            <div key={s.lesson_id} className="flex items-center justify-between gap-1 bg-slate-700/50 px-2 py-1 rounded text-xs">
-                              <span className="text-slate-300">{s.section_title || `섹션 ${s.section_order + 1}`}</span>
-                              <div className="flex gap-0.5">
-                                <button
-                                  className="text-slate-400 hover:text-slate-200"
-                                  onClick={() => handleMoveSection(selected.id, u.id, s.lesson_id, "up")}
-                                  disabled={sidx === 0}
-                                >
-                                  ↑
-                                </button>
-                                <button
-                                  className="text-slate-400 hover:text-slate-200"
-                                  onClick={() => handleMoveSection(selected.id, u.id, s.lesson_id, "down")}
-                                  disabled={sidx === sectionMap[u.id]!.length - 1}
-                                >
-                                  ↓
-                                </button>
-                                <button
-                                  className="text-red-400 hover:text-red-300"
-                                  onClick={() => handleDeleteSection(selected.id, u.id, s.lesson_id, s.section_title || `섹션 ${s.section_order + 1}`)}
-                                >
-                                  ✕
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                      ))}
+                      {units.length === 0 && <p className="text-slate-500 text-sm text-center py-4">단원이 없습니다.</p>}
                     </div>
-                  ))}
-                  {units.length === 0 && <p className="text-slate-500 text-sm text-center py-4">단원이 없습니다.</p>}
-                </div>
+                  </SortableContext>
+                </DndContext>
               </>
             )}
           </div>

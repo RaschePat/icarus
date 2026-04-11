@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { v4 as uuidv4 } from "uuid";
@@ -59,6 +59,25 @@ export default function LessonConsolePage() {
   const [lesson, setLesson] = useState<LessonContext>(() => makeLesson(lessonId, userId));
   const [quizActivating, setQuizActivating] = useState(false);
   const [quizMsg, setQuizMsg] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  // 페이지 로드 시 기존 수업 내용 로드
+  useEffect(() => {
+    const loadLesson = async () => {
+      try {
+        const response = await fetch(`/api/v1/lesson/${lessonId}`);
+        if (response.ok) {
+          const data = await response.json();
+          setLesson(data);
+        }
+      } catch (e) {
+        console.error("기존 수업 로드 실패:", e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadLesson();
+  }, [lessonId]);
 
   const handleAnalysisComplete = useCallback((result: AnalysisResult) => {
     setLesson((prev) => ({

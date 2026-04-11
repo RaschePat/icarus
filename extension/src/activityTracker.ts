@@ -15,6 +15,31 @@ export class ActivityTracker {
     private readonly _userId: string
   ) {}
 
+  private async _sendToBackend(event: { event_type: string; data: Record<string, unknown> }) {
+    const config = vscode.workspace.getConfiguration("wing");
+    const backendUrl: string = config.get("backendUrl") ?? "http://localhost:8000";
+    const userId: string = config.get("userId") ?? this._userId;
+
+    if (!userId || !backendUrl) return;
+
+    try {
+      const sessionId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      await fetch(`${backendUrl}/v1/activity/log`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: sessionId,
+          user_id: userId,
+          event_type: event.event_type,
+          data: event.data,
+          timestamp: new Date().toISOString(),
+        }),
+      });
+    } catch {
+      // 조용히 무시
+    }
+  }
+
   start() {
     // 텍스트 변경 → INPUT_TYPE 이벤트
     this._disposables.push(
@@ -47,12 +72,10 @@ export class ActivityTracker {
   }
 
   private _log(event: { event_type: string; data: Record<string, unknown> }) {
-    const payload = {
-      ...event,
-      timestamp: new Date().toISOString(),
-    };
     // 비동기 fire-and-forget — MCP 미연결 시 조용히 무시
-    this._mcp.writeActivityLog(payload).catch(() => {});
+    this._mcp.writeActivityLog(event).catch(() => {});
+    // 백엔드에도 직접 전송
+    this._sendToBackend(event);
   }
 
   dispose() {
