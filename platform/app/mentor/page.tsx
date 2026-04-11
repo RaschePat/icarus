@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import { getMentorStudents, addMentorStudent, removeMentorStudent, getUsersByRole } from "@/lib/api";
+import { getMentorStudents, addMentorStudent, removeMentorStudent, getUsersByRole, getStudentCourses } from "@/lib/api";
 import Link from "next/link";
 import type { MentorStudentItem, AptitudeScores, UserBasic } from "@/lib/types";
 
@@ -38,6 +38,7 @@ export default function MentorPage() {
 
   const [students, setStudents] = useState<MentorStudentItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [studentCourses, setStudentCourses] = useState<Record<string, string[]>>({});
 
   // 이메일 검색 상태
   const [searchEmail, setSearchEmail] = useState("");
@@ -46,12 +47,27 @@ export default function MentorPage() {
   const [searchMsg, setSearchMsg] = useState("");
   const [adding, setAdding] = useState<string | null>(null); // 추가 중인 student_id
 
-  const load = () => {
+  const load = async () => {
     if (!mentorId) return;
-    getMentorStudents(mentorId)
-      .then((data) => setStudents(data))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    try {
+      const data = await getMentorStudents(mentorId);
+      setStudents(data);
+      // 각 학생의 배정 과정 목록 로드
+      const coursesMap: Record<string, string[]> = {};
+      for (const student of data) {
+        try {
+          const courses = await getStudentCourses(student.user_id);
+          coursesMap[student.user_id] = courses.map((c) => c.title);
+        } catch {
+          coursesMap[student.user_id] = [];
+        }
+      }
+      setStudentCourses(coursesMap);
+    } catch {
+      // error ignored
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { load(); }, [mentorId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -197,6 +213,20 @@ export default function MentorPage() {
                   ))}
                   {s.career_identity.length > 3 && (
                     <span className="text-xs text-slate-600">+{s.career_identity.length - 3}</span>
+                  )}
+                </div>
+              )}
+
+              {/* 배정된 과정 */}
+              {(studentCourses[s.user_id] || []).length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {studentCourses[s.user_id].slice(0, 2).map((courseName) => (
+                    <span key={courseName} className="badge bg-slate-700/60 text-slate-300 text-xs">
+                      {courseName}
+                    </span>
+                  ))}
+                  {studentCourses[s.user_id].length > 2 && (
+                    <span className="text-xs text-slate-600">+{studentCourses[s.user_id].length - 2}</span>
                   )}
                 </div>
               )}

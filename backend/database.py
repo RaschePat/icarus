@@ -31,6 +31,7 @@ _MIGRATIONS = [
     "ALTER TABLE lessons ADD COLUMN IF NOT EXISTS unit_id INTEGER REFERENCES units(id)",
     "ALTER TABLE lessons ADD COLUMN IF NOT EXISTS section_title VARCHAR DEFAULT ''",
     "ALTER TABLE lessons ADD COLUMN IF NOT EXISTS section_order INTEGER DEFAULT 0",
+    # student_courses 테이블은 create_all에서 CREATE TABLE IF NOT EXISTS로 생성됨
 ]
 
 

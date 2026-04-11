@@ -17,7 +17,6 @@ const NAV_ITEMS: Record<string, { label: string; href: string }[]> = {
   ],
   instructor: [
     { label: "강의 콘솔",  href: "/instructor" },
-    { label: "과정 관리",  href: "/instructor/courses" },
   ],
   admin: [
     { label: "전체 현황",  href: "/admin" },

@@ -115,7 +115,7 @@ export async function createUnit(courseId: number, data: { title: string; order_
   return apiFetch<Unit>(`/courses/${courseId}/units`, { method: "POST", body: JSON.stringify(data) });
 }
 
-import type { Section } from "./types";
+import type { Section, Course as CourseType } from "./types";
 
 export async function getSections(courseId: number, unitId: number): Promise<Section[]> {
   return apiFetch(`/courses/${courseId}/units/${unitId}/sections`);
@@ -126,6 +126,17 @@ export async function enrollStudent(lessonId: string, studentId: string): Promis
     method: "POST",
     body: JSON.stringify({ student_id: studentId }),
   });
+}
+
+export async function enrollStudentInCourse(studentId: string, courseId: number): Promise<void> {
+  await apiFetch("/student-courses", {
+    method: "POST",
+    body: JSON.stringify({ student_id: studentId, course_id: courseId }),
+  });
+}
+
+export async function getStudentCourses(studentId: string): Promise<CourseType[]> {
+  return apiFetch(`/student-courses/${studentId}`);
 }
 
 // ── 마이크로 프로젝트 ─────────────────────────────────────────────────────

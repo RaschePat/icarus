@@ -4,9 +4,9 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import {
   getCourses, createCourse, getUnits, createUnit,
-  assignInstructor, removeInstructor, getUsersByRole,
+  assignInstructor, removeInstructor, getUsersByRole, getSections,
 } from "@/lib/api";
-import type { Course, Unit, UserBasic } from "@/lib/types";
+import type { Course, Unit, UserBasic, Section } from "@/lib/types";
 
 export default function AdminCoursesPage() {
   const { data: session } = useSession();
@@ -26,13 +26,17 @@ export default function AdminCoursesPage() {
 
   // 단원 생성 폼
   const [unitTitle, setUnitTitle] = useState("");
-  const [unitOrder, setUnitOrder] = useState(0);
 
   // 강사 배정 폼
   const [assignInstructorId, setAssignInstructorId] = useState("");
   const [assigning, setAssigning] = useState(false);
-  const [reassigning, setReassigning] = useState(false); // 재배정 폼 토글
+  const [reassigning, setReassigning] = useState(false);
   const [msg, setMsg] = useState("");
+
+  // 섹션 캐시 & 폼
+  const [sectionMap, setSectionMap] = useState<Record<number, Section[]>>({});
+  const [sectionInputs, setSectionInputs] = useState<Record<number, string>>({});
+  const [creatingSection, setCreatingSection] = useState<number | null>(null);
 
   const loadCourses = () =>
     getCourses().then(setCourses).catch(() => {}).finally(() => setLoading(false));
@@ -76,9 +80,42 @@ export default function AdminCoursesPage() {
 
   const handleAddUnit = async () => {
     if (!unitTitle.trim() || !selected) return;
-    await createUnit(selected.id, { title: unitTitle, order_index: unitOrder });
-    setUnitTitle("");
-    loadUnits(selected);
+    setMsg("");
+    try {
+      // 최대 order_index 찾아서 +1
+      const maxOrder = Math.max(0, ...units.map((u) => u.order_index));
+      await createUnit(selected.id, { title: unitTitle, order_index: maxOrder + 1 });
+      setUnitTitle("");
+      loadUnits(selected);
+      setMsg(`✓ 단원 '${unitTitle}'이 추가됐습니다.`);
+    } catch (e) {
+      setMsg(`오류: ${(e as Error).message}`);
+    }
+  };
+
+  const loadSections = async (unitId: number) => {
+    if (!selected) return;
+    const sections = await getSections(selected.id, unitId).catch(() => [] as Section[]);
+    setSectionMap((prev) => ({ ...prev, [unitId]: sections }));
+  };
+
+  const handleAddSection = async (unitId: number) => {
+    if (!selected || !sectionInputs[unitId]?.trim()) return;
+    setCreatingSection(unitId);
+    setMsg("");
+    try {
+      const sections = sectionMap[unitId] || [];
+      const maxOrder = Math.max(0, ...sections.map((s) => s.section_order));
+      // Note: 백엔드 API POST /courses/{courseId}/units/{unitId}/sections가 필요함
+      // 그리고 섹션 생성 함수가 api.ts에 필요함
+      // 일단 placeholder로 구현
+      setMsg(`섹션 '${sectionInputs[unitId]}' 추가 기능은 곧 추가됩니다.`);
+      setSectionInputs((prev) => ({ ...prev, [unitId]: "" }));
+    } catch (e) {
+      setMsg(`오류: ${(e as Error).message}`);
+    } finally {
+      setCreatingSection(null);
+    }
   };
 
   const handleAssign = async () => {
@@ -139,7 +176,6 @@ export default function AdminCoursesPage() {
               <input type="number" className="input text-sm w-20" min={1} value={courseDuration} onChange={(e) => setCourseDuration(Number(e.target.value))} />
             </div>
 
-            {/* 강사 드롭다운 */}
             <div>
               <label className="label">담당 강사 (선택)</label>
               <select className="input text-sm" value={selectedInstructorId} onChange={(e) => setSelectedInstructorId(e.target.value)}>
@@ -189,21 +225,16 @@ export default function AdminCoursesPage() {
               <h2 className="font-semibold text-sm">{selected.title} — 강사 배정</h2>
 
               {selected.instructor_id && !reassigning ? (
-                /* 배정 완료 상태 */
                 <div className="flex items-center justify-between bg-emerald-950/30 border border-emerald-500/30 rounded-lg px-4 py-2.5">
                   <div>
                     <p className="text-xs text-emerald-400 font-medium">배정 완료</p>
                     <p className="text-sm text-slate-200">{instructorName(selected.instructor_id)}</p>
                   </div>
-                  <button
-                    className="btn-ghost text-xs"
-                    onClick={() => setReassigning(true)}
-                  >
+                  <button className="btn-ghost text-xs" onClick={() => setReassigning(true)}>
                     재배정
                   </button>
                 </div>
               ) : (
-                /* 배정 폼 */
                 <div className="flex flex-col gap-2">
                   {selected.instructor_id && (
                     <p className="text-xs text-slate-500">현재 담당: {instructorName(selected.instructor_id)}</p>
@@ -234,15 +265,35 @@ export default function AdminCoursesPage() {
             {selected && (
               <>
                 <div className="flex gap-2 border border-slate-700 rounded-lg p-3">
-                  <input className="input text-sm flex-1" placeholder="단원 제목" value={unitTitle} onChange={(e) => setUnitTitle(e.target.value)} />
-                  <input type="number" className="input text-sm w-16" min={0} value={unitOrder} onChange={(e) => setUnitOrder(Number(e.target.value))} />
+                  <input className="input text-sm flex-1" placeholder="단원 제목 (예: 1단원 변수와 자료형)" value={unitTitle} onChange={(e) => setUnitTitle(e.target.value)} />
                   <button className="btn-primary text-sm px-3 shrink-0" onClick={handleAddUnit}>추가</button>
                 </div>
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-3">
                   {units.sort((a, b) => a.order_index - b.order_index).map((u) => (
-                    <div key={u.id} className="bg-slate-800/40 border border-slate-700 rounded-lg px-4 py-3">
-                      <p className="font-semibold text-sm">{u.title}</p>
-                      <p className="text-xs text-slate-500">순서: {u.order_index}</p>
+                    <div key={u.id} className="bg-slate-800/40 border border-slate-700 rounded-lg p-3 flex flex-col gap-2">
+                      <div>
+                        <p className="font-semibold text-sm">{u.title}</p>
+                        <p className="text-xs text-slate-500">순서: {u.order_index}</p>
+                      </div>
+
+                      {/* 섹션 추가 폼 */}
+                      <div className="flex gap-1">
+                        <input
+                          type="text"
+                          className="input text-xs flex-1"
+                          placeholder="섹션명 (예: 1-1강)"
+                          value={sectionInputs[u.id] || ""}
+                          onChange={(e) => setSectionInputs((prev) => ({ ...prev, [u.id]: e.target.value }))}
+                          onKeyDown={(e) => e.key === "Enter" && handleAddSection(u.id)}
+                        />
+                        <button
+                          className="btn-primary text-xs px-2 shrink-0"
+                          onClick={() => handleAddSection(u.id)}
+                          disabled={creatingSection === u.id}
+                        >
+                          {creatingSection === u.id ? "중…" : "+"}
+                        </button>
+                      </div>
                     </div>
                   ))}
                   {units.length === 0 && <p className="text-slate-500 text-sm text-center py-4">단원이 없습니다.</p>}

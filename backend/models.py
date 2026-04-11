@@ -149,3 +149,15 @@ class StudentLesson(Base):
         String, ForeignKey("lessons.lesson_id"), nullable=False, index=True
     )
     enrolled_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class StudentCourse(Base):
+    """학생-과정 수강 등록 (N:M)."""
+    __tablename__ = "student_courses"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    student_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    course_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("courses.id"), nullable=False, index=True
+    )
+    enrolled_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

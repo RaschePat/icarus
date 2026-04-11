@@ -11,7 +11,7 @@ from database import get_db
 from models import (
     LessonContext, MicroProject, PlatformNotification,
     MentorStudent, UserRole, UserProfile, ActivityLog,
-    Lesson, StudentLesson,
+    Lesson, StudentLesson, StudentCourse, Course,
 )
 from deps import get_current_user
 
@@ -324,6 +324,58 @@ async def remove_mentor_student(student_id: str, mentor_id: str, db: AsyncSessio
     await db.delete(row)
     await db.commit()
     return {"status": "ok"}
+
+
+# ── 학생 과정 등록 ──────────────────────────────────────────────────────
+
+class StudentCourseEnroll(BaseModel):
+    student_id: str
+    course_id: int
+
+
+@router.post("/student-courses", status_code=201)
+async def enroll_course(body: StudentCourseEnroll, db: AsyncSession = Depends(get_db)):
+    """학생을 과정에 등록합니다."""
+    course = await db.get(Course, body.course_id)
+    if not course:
+        raise HTTPException(status_code=404, detail="과정을 찾을 수 없습니다.")
+    # 중복 등록 방지
+    dup_stmt = select(StudentCourse).where(
+        StudentCourse.student_id == body.student_id,
+        StudentCourse.course_id == body.course_id,
+    )
+    if (await db.execute(dup_stmt)).scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="이미 등록된 과정입니다.")
+    row = StudentCourse(student_id=body.student_id, course_id=body.course_id)
+    db.add(row)
+    await db.commit()
+    return {"status": "enrolled", "student_id": body.student_id, "course_id": body.course_id}
+
+
+@router.get("/student-courses/{student_id}")
+async def list_student_courses(student_id: str, db: AsyncSession = Depends(get_db)):
+    """학생이 수강 중인 과정 목록."""
+    stmt = (
+        select(StudentCourse)
+        .where(StudentCourse.student_id == student_id)
+        .order_by(StudentCourse.enrolled_at)
+    )
+    rows = (await db.execute(stmt)).scalars().all()
+
+    # 각 과정의 상세 정보 조회
+    courses = []
+    for sc in rows:
+        course = await db.get(Course, sc.course_id)
+        if course:
+            courses.append({
+                "id": course.id,
+                "title": course.title,
+                "description": course.description,
+                "duration_months": course.duration_months,
+                "instructor_id": course.instructor_id,
+                "enrolled_at": sc.enrolled_at.isoformat(),
+            })
+    return courses
 
 
 # ── 수강 등록 ────────────────────────────────────────────────────────────

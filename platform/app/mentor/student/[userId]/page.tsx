@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import {
-  getMentorStudentDetail, getCourses, getUnits, getSections, enrollStudent,
+  getMentorStudentDetail, getCourses, enrollStudentInCourse, getStudentCourses,
 } from "@/lib/api";
 import Link from "next/link";
 import {
@@ -136,57 +136,36 @@ function RedFlagHistory({ flags }: { flags: MentorStudentDetail["red_flags"] }) 
 
 function EnrollSection({ studentId }: { studentId: string }) {
   const [courses, setCourses] = useState<Course[]>([]);
-  const [units, setUnits] = useState<Unit[]>([]);
-  const [sections, setSections] = useState<Section[]>([]);
-
-  const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
-  const [selectedUnit, setSelectedUnit] = useState<Unit | null>(null);
-  const [selectedSection, setSelectedSection] = useState<Section | null>(null);
-
+  const [enrolledCourses, setEnrolledCourses] = useState<Course[]>([]);
+  const [selectedCourseId, setSelectedCourseId] = useState<string>("");
   const [enrolling, setEnrolling] = useState(false);
   const [msg, setMsg] = useState("");
 
   useEffect(() => {
     getCourses().then(setCourses).catch(() => {});
-  }, []);
-
-  const handleCourseChange = async (courseId: string) => {
-    const course = courses.find((c) => String(c.id) === courseId) ?? null;
-    setSelectedCourse(course);
-    setSelectedUnit(null);
-    setSelectedSection(null);
-    setUnits([]);
-    setSections([]);
-    if (course) {
-      const u = await getUnits(course.id).catch(() => [] as Unit[]);
-      setUnits(u.sort((a, b) => a.order_index - b.order_index));
-    }
-  };
-
-  const handleUnitChange = async (unitId: string) => {
-    const unit = units.find((u) => String(u.id) === unitId) ?? null;
-    setSelectedUnit(unit);
-    setSelectedSection(null);
-    setSections([]);
-    if (unit && selectedCourse) {
-      const s = await getSections(selectedCourse.id, unit.id).catch(() => [] as Section[]);
-      setSections(s.sort((a, b) => a.section_order - b.section_order));
-    }
-  };
+    getStudentCourses(studentId).then(setEnrolledCourses).catch(() => {});
+  }, [studentId]);
 
   const handleEnroll = async () => {
-    if (!selectedSection) return;
+    if (!selectedCourseId) return;
     setEnrolling(true);
     setMsg("");
     try {
-      await enrollStudent(selectedSection.lesson_id, studentId);
-      setMsg(`✓ '${selectedSection.section_title || selectedSection.lesson_id}' 수업에 등록 완료`);
+      const courseId = parseInt(selectedCourseId);
+      await enrollStudentInCourse(studentId, courseId);
+      const courseName = courses.find((c) => c.id === courseId)?.title || "과정";
+      setMsg(`✓ '${courseName}' 과정에 등록 완료`);
+      setSelectedCourseId("");
+      getStudentCourses(studentId).then(setEnrolledCourses);
     } catch (e) {
       setMsg(`오류: ${(e as Error).message}`);
     } finally {
       setEnrolling(false);
     }
   };
+
+  const enrolledIds = new Set(enrolledCourses.map((c) => c.id));
+  const availableCourses = courses.filter((c) => !enrolledIds.has(c.id));
 
   return (
     <div className="card flex flex-col gap-4">
@@ -202,45 +181,47 @@ function EnrollSection({ studentId }: { studentId: string }) {
         </p>
       )}
 
-      <div className="flex flex-col gap-2">
-        <select className="input text-sm" onChange={(e) => handleCourseChange(e.target.value)} defaultValue="">
-          <option value="" disabled>— 과정 선택 —</option>
-          {courses.map((c) => (
-            <option key={c.id} value={c.id}>{c.title}</option>
-          ))}
-        </select>
-
-        {units.length > 0 && (
-          <select className="input text-sm" onChange={(e) => handleUnitChange(e.target.value)} defaultValue="">
-            <option value="" disabled>— 단원 선택 —</option>
-            {units.map((u) => (
-              <option key={u.id} value={u.id}>{u.title}</option>
-            ))}
-          </select>
+      <div className="flex flex-col gap-3">
+        {/* 배정된 과정 목록 */}
+        {enrolledCourses.length > 0 && (
+          <div>
+            <p className="text-xs text-slate-500 font-medium mb-1.5">배정된 과정</p>
+            <div className="flex flex-wrap gap-1">
+              {enrolledCourses.map((c) => (
+                <span key={c.id} className="badge bg-blue-900/40 text-blue-300 text-xs">
+                  {c.title}
+                </span>
+              ))}
+            </div>
+          </div>
         )}
 
-        {sections.length > 0 && (
-          <select className="input text-sm" onChange={(e) => {
-            const s = sections.find((sec) => sec.lesson_id === e.target.value) ?? null;
-            setSelectedSection(s);
-          }} defaultValue="">
-            <option value="" disabled>— 섹션(수업일) 선택 —</option>
-            {sections.map((s) => (
-              <option key={s.lesson_id} value={s.lesson_id}>
-                {s.section_title || `섹션 ${s.section_order + 1}`}
-              </option>
-            ))}
-          </select>
+        {/* 과정 선택 및 배정 */}
+        {availableCourses.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <label className="text-xs text-slate-500">추가 배정</label>
+            <select
+              className="input text-sm"
+              value={selectedCourseId}
+              onChange={(e) => setSelectedCourseId(e.target.value)}
+            >
+              <option value="">— 과정 선택 —</option>
+              {availableCourses.map((c) => (
+                <option key={c.id} value={c.id}>{c.title}</option>
+              ))}
+            </select>
+            <button
+              className="btn-primary text-sm"
+              onClick={handleEnroll}
+              disabled={enrolling || !selectedCourseId}
+            >
+              {enrolling ? "배정 중…" : "배정"}
+            </button>
+          </div>
         )}
 
-        {selectedSection && (
-          <button
-            className="btn-primary text-sm"
-            onClick={handleEnroll}
-            disabled={enrolling}
-          >
-            {enrolling ? "등록 중…" : "수업 등록"}
-          </button>
+        {availableCourses.length === 0 && enrolledCourses.length > 0 && (
+          <p className="text-xs text-slate-500 text-center py-2">모든 과정이 배정되었습니다.</p>
         )}
       </div>
     </div>
