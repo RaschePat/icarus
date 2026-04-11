@@ -27,37 +27,41 @@ function buildCloudItems(
   top_keywords?: string[] | null,
   rgb?: string,
 ) {
-  // 안전한 기본값 처리
-  const freq = keyword_freq || {};
-  const keywords = top_keywords || [];
-  const rgbValue = rgb || "100,116,139";
+  try {
+    // 안전한 기본값 처리
+    const freq = keyword_freq && typeof keyword_freq === "object" ? keyword_freq : {};
+    const keywords = Array.isArray(top_keywords) ? top_keywords : [];
+    const rgbValue = rgb || "100,116,139";
 
-  if (keywords.length === 0 || Object.keys(freq).length === 0) {
+    if (keywords.length === 0 || Object.keys(freq).length === 0) {
+      return [];
+    }
+
+    const items = keywords
+      .filter((kw) => typeof kw === "string" && freq && Object.prototype.hasOwnProperty.call(freq, kw) && (freq[kw] ?? 0) > 0)
+      .map((kw) => ({ kw, freq: freq[kw] ?? 0 }));
+
+    if (items.length === 0) return [];
+
+    const maxFreq = Math.max(...items.map((i) => i.freq));
+    const minFreq = Math.min(...items.map((i) => i.freq));
+    const range   = maxFreq - minFreq || 1;
+
+    return items.map(({ kw, freq }) => {
+      const ratio      = (freq - minFreq) / range;           // 0(최소) ~ 1(최대)
+      const fontSize   = Math.round(14 + ratio * 14);        // 14px ~ 28px
+      const textOpacity = parseFloat((0.5 + ratio * 0.5).toFixed(2)); // 0.5 ~ 1.0
+      const bgAlpha    = parseFloat((0.08 + ratio * 0.14).toFixed(2)); // 0.08 ~ 0.22
+      const borderAlpha = parseFloat((0.2 + ratio * 0.35).toFixed(2)); // 0.2 ~ 0.55
+      const fontWeight = ratio > 0.6 ? 700 : ratio > 0.3 ? 600 : 400;
+      const background = `rgba(${rgbValue},${bgAlpha})`;
+      const borderColor = `rgba(${rgbValue},${borderAlpha})`;
+      return { kw, freq, fontSize, textOpacity, fontWeight, background, borderColor };
+    });
+  } catch (err) {
+    console.error("buildCloudItems 에러:", err);
     return [];
   }
-
-  const items = keywords
-    .filter((kw) => typeof kw === "string" && kw in freq)
-    .map((kw) => ({ kw, freq: freq[kw] ?? 0 }))
-    .filter((item) => item.freq > 0);
-
-  if (items.length === 0) return [];
-
-  const maxFreq = Math.max(...items.map((i) => i.freq));
-  const minFreq = Math.min(...items.map((i) => i.freq));
-  const range   = maxFreq - minFreq || 1;
-
-  return items.map(({ kw, freq }) => {
-    const ratio      = (freq - minFreq) / range;           // 0(최소) ~ 1(최대)
-    const fontSize   = Math.round(14 + ratio * 14);        // 14px ~ 28px
-    const textOpacity = parseFloat((0.5 + ratio * 0.5).toFixed(2)); // 0.5 ~ 1.0
-    const bgAlpha    = parseFloat((0.08 + ratio * 0.14).toFixed(2)); // 0.08 ~ 0.22
-    const borderAlpha = parseFloat((0.2 + ratio * 0.35).toFixed(2)); // 0.2 ~ 0.55
-    const fontWeight = ratio > 0.6 ? 700 : ratio > 0.3 ? 600 : 400;
-    const background = `rgba(${rgbValue},${bgAlpha})`;
-    const borderColor = `rgba(${rgbValue},${borderAlpha})`;
-    return { kw, freq, fontSize, textOpacity, fontWeight, background, borderColor };
-  });
 }
 
 export default function InterestProfileCard({ interest }: Props) {
