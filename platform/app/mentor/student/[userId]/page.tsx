@@ -363,9 +363,10 @@ export default function MentorStudentDetailPage() {
         {/* 오른쪽 열 */}
         <div className="flex flex-col gap-4">
           <CareerIdentitySection tags={profile?.career_identity ?? []} />
-          {profile?.interest_profile && (
+          {/* TODO: interest_profile keyword_freq 필드 추가 후 활성화 */}
+          {/* {profile?.interest_profile && (
             <InterestProfileCard interest={profile.interest_profile} />
-          )}
+          )} */}
         </div>
       </div>
     </div>
