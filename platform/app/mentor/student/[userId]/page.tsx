@@ -236,13 +236,19 @@ export default function MentorStudentDetailPage() {
 
   const [detail, setDetail] = useState<MentorStudentDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [notFound, setNotFound] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState(0);
 
   useEffect(() => {
     getMentorStudentDetail(userId)
-      .then(setDetail)
-      .catch(() => setNotFound(true))
+      .then((data) => {
+        setDetail(data);
+        setError(null);
+      })
+      .catch((err) => {
+        console.error("학생 정보 조회 실패:", err);
+        setError((err as Error).message || "학생 정보를 불러올 수 없습니다.");
+      })
       .finally(() => setLoading(false));
   }, [userId]);
 
@@ -254,13 +260,28 @@ export default function MentorStudentDetailPage() {
     );
   }
 
-  if (notFound || !detail) {
+  if (error && !detail) {
     return (
       <div className="max-w-screen-xl mx-auto px-6 py-6 flex flex-col gap-4">
         <Link href="/mentor" className="text-slate-400 hover:text-slate-200 text-sm">
           ← 내 학생 목록
         </Link>
-        <p className="text-red-400">학생 정보를 찾을 수 없습니다.</p>
+        <div className="card bg-red-950/30 border border-red-500/30">
+          <p className="text-red-400 text-sm font-medium">오류 발생</p>
+          <p className="text-red-300 text-xs mt-1">{error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  // detail이 없으면 기본값으로 렌더링
+  if (!detail) {
+    return (
+      <div className="max-w-screen-xl mx-auto px-6 py-6 flex flex-col gap-4">
+        <Link href="/mentor" className="text-slate-400 hover:text-slate-200 text-sm">
+          ← 내 학생 목록
+        </Link>
+        <p className="text-slate-500">학생 정보를 불러올 수 없습니다.</p>
       </div>
     );
   }

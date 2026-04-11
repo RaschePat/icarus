@@ -524,6 +524,53 @@ class IcarusSeeder:
         print_success(f"총 {success_count}/{total_count}개 멘토-학생 배정 완료")
         return success_count == total_count
 
+    def step13_create_micro_projects(self):
+        """Step 13: 학생별 마이크로 프로젝트 생성"""
+        print_step(13, "학생별 마이크로 프로젝트 생성")
+
+        templates = ["java", "python", "node"]
+        interest_categories = ["게임", "패션", "의료", "커머스", "교육"]
+        project_names = [
+            "이커머스 플랫폼", "SNS 앱", "블로그 시스템", "채팅 앱", "날씨 앱",
+            "투두 앱", "포트폴리오 사이트", "영화 정보 사이트", "게임 스코어 보드", "실시간 알림 시스템"
+        ]
+
+        success_count = 0
+        total_count = 0
+        student_list = list(self.student_ids.items())
+
+        # 5명당 2~3개 프로젝트 생성
+        for group_idx in range(0, len(student_list), 5):
+            group_students = student_list[group_idx:group_idx + 5]
+            num_projects = random.randint(2, 3)
+
+            for _ in range(num_projects):
+                for student_email, student_id in group_students:
+                    harness_total = random.randint(3, 6)
+                    harness_filled = random.randint(0, harness_total)  # 완성 또는 진행 중
+
+                    project_data = {
+                        "student_id": student_id,
+                        "name": random.choice(project_names),
+                        "template": random.choice(templates),
+                        "interest_category": random.choice(interest_categories),
+                        "harness_total": harness_total,
+                        "harness_filled": harness_filled,
+                    }
+
+                    response = self._make_request("POST", "/micro-projects",
+                                                project_data, token=self.admin_token, expect_status=201)
+                    if response:
+                        print_success(f"프로젝트 생성: {student_email} → {project_data['name']} ({harness_filled}/{harness_total})")
+                        success_count += 1
+                    else:
+                        print_error(f"프로젝트 생성 실패: {student_email}")
+
+                    total_count += 1
+
+        print_success(f"총 {success_count}/{total_count}개 마이크로 프로젝트 생성 완료")
+        return True  # 실패해도 계속 진행
+
     def run(self):
         """전체 시딩 프로세스 실행"""
         print(f"\n{BOLD}=== ICARUS 더미 데이터 생성 스크립트 ==={RESET}")
@@ -541,7 +588,8 @@ class IcarusSeeder:
             ("강사-과정 배정", self.step9_assign_instructors_to_courses),
             ("학생-과정 배정", self.step10_assign_students_to_courses),
             ("User profile 생성", self.step11_create_user_profiles),
-            ("멘토-학생 배정", self.step12_assign_students_to_mentors)
+            ("멘토-학생 배정", self.step12_assign_students_to_mentors),
+            ("마이크로 프로젝트 생성", self.step13_create_micro_projects)
         ]
 
         results = []

@@ -348,6 +348,15 @@ async def get_mentor_student_detail(
 
 @router.post("/mentor/students", status_code=201)
 async def add_mentor_student(body: MentorStudentAdd, db: AsyncSession = Depends(get_db)):
+    """멘토에게 학생을 배정합니다. 중복 배정은 방지합니다."""
+    # 중복 배정 확인
+    stmt = select(MentorStudent).where(
+        MentorStudent.mentor_id == body.mentor_id,
+        MentorStudent.student_id == body.student_id,
+    )
+    if (await db.execute(stmt)).scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="이미 배정된 학생입니다.")
+
     row = MentorStudent(mentor_id=body.mentor_id, student_id=body.student_id)
     db.add(row)
     await db.commit()
