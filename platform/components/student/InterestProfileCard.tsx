@@ -23,18 +23,23 @@ function getColor(category: string) {
 
 /** keyword_freq에서 빈도 기반 시각 속성을 계산합니다 */
 function buildCloudItems(
-  keyword_freq: Record<string, number> | undefined | null,
-  top_keywords: string[] | undefined | null,
-  rgb: string,
+  keyword_freq?: Record<string, number> | null,
+  top_keywords?: string[] | null,
+  rgb?: string,
 ) {
-  // 기본값 처리
-  if (!keyword_freq || !top_keywords || top_keywords.length === 0) {
+  // 안전한 기본값 처리
+  const freq = keyword_freq || {};
+  const keywords = top_keywords || [];
+  const rgbValue = rgb || "100,116,139";
+
+  if (keywords.length === 0 || Object.keys(freq).length === 0) {
     return [];
   }
 
-  const items = top_keywords
-    .filter((kw) => kw in keyword_freq)
-    .map((kw) => ({ kw, freq: keyword_freq[kw] }));
+  const items = keywords
+    .filter((kw) => typeof kw === "string" && kw in freq)
+    .map((kw) => ({ kw, freq: freq[kw] ?? 0 }))
+    .filter((item) => item.freq > 0);
 
   if (items.length === 0) return [];
 
@@ -49,8 +54,8 @@ function buildCloudItems(
     const bgAlpha    = parseFloat((0.08 + ratio * 0.14).toFixed(2)); // 0.08 ~ 0.22
     const borderAlpha = parseFloat((0.2 + ratio * 0.35).toFixed(2)); // 0.2 ~ 0.55
     const fontWeight = ratio > 0.6 ? 700 : ratio > 0.3 ? 600 : 400;
-    const background = `rgba(${rgb},${bgAlpha})`;
-    const borderColor = `rgba(${rgb},${borderAlpha})`;
+    const background = `rgba(${rgbValue},${bgAlpha})`;
+    const borderColor = `rgba(${rgbValue},${borderAlpha})`;
     return { kw, freq, fontSize, textOpacity, fontWeight, background, borderColor };
   });
 }
@@ -61,13 +66,13 @@ export default function InterestProfileCard({ interest }: Props) {
     category_counts = {},
     top_category,
     top_keywords = [],
-    keyword_freq,
+    keyword_freq = {},
   } = interest || {};
 
   const sortedCategories = Object.entries(category_counts || {}).sort((a, b) => b[1] - a[1]);
   const maxCount   = sortedCategories[0]?.[1] ?? 1;
   const topColor   = top_category ? getColor(top_category) : getColor("기타");
-  const cloudItems = buildCloudItems(keyword_freq, top_keywords, topColor.rgb);
+  const cloudItems = buildCloudItems(keyword_freq || {}, top_keywords || [], topColor.rgb);
 
   return (
     <div className="card flex flex-col gap-4">
