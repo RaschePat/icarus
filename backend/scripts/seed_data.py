@@ -414,7 +414,7 @@ class IcarusSeeder:
                     print_error(f"과정을 찾을 수 없음: {course_name}")
                     continue
 
-                enroll_data = {"student_id": student_id, "course_id": course_id}
+                enroll_data = {"user_id": student_id, "course_id": course_id}
                 response = self._make_request("POST", "/student-courses",
                                             enroll_data, token=self.admin_token, expect_status=201)
                 if response:
@@ -510,7 +510,7 @@ class IcarusSeeder:
 
             mentor_token = login_response["access_token"]
 
-            assign_data = {"student_id": student_id, "mentor_id": mentor_id}
+            assign_data = {"user_id": student_id, "mentor_id": mentor_id}
             response = self._make_request("POST", "/mentor/students",
                                         assign_data, token=mentor_token, expect_status=201)
             if response:
@@ -550,7 +550,7 @@ class IcarusSeeder:
                     harness_filled = random.randint(0, harness_total)  # 완성 또는 진행 중
 
                     project_data = {
-                        "student_id": student_id,
+                        "user_id": student_id,
                         "name": random.choice(project_names),
                         "template": random.choice(templates),
                         "interest_category": random.choice(interest_categories),
