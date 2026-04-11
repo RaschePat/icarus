@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import {
   getCourses, createCourse, getUnits, createUnit,
   assignInstructor, removeInstructor, getUsersByRole, getSections,
+  createSection, deleteUnit, deleteSection, updateUnitOrder, updateSectionOrder,
 } from "@/lib/api";
 import type { Course, Unit, UserBasic, Section } from "@/lib/types";
 
@@ -55,6 +56,7 @@ export default function AdminCoursesPage() {
     setSelected(c);
     setAssignInstructorId("");
     setReassigning(false);
+    setSectionMap({});
     getUnits(c.id).then(setUnits).catch(() => {});
   };
 
@@ -82,21 +84,42 @@ export default function AdminCoursesPage() {
     if (!unitTitle.trim() || !selected) return;
     setMsg("");
     try {
-      // 최대 order_index 찾아서 +1
       const maxOrder = Math.max(0, ...units.map((u) => u.order_index));
       await createUnit(selected.id, { title: unitTitle, order_index: maxOrder + 1 });
       setUnitTitle("");
       loadUnits(selected);
-      setMsg(`✓ 단원 '${unitTitle}'이 추가됐습니다.`);
+      setMsg(`✓ 단원이 추가됐습니다.`);
     } catch (e) {
       setMsg(`오류: ${(e as Error).message}`);
     }
   };
 
-  const loadSections = async (unitId: number) => {
-    if (!selected) return;
-    const sections = await getSections(selected.id, unitId).catch(() => [] as Section[]);
-    setSectionMap((prev) => ({ ...prev, [unitId]: sections }));
+  const handleDeleteUnit = async (courseId: number, unitId: number, unitTitle: string) => {
+    if (!confirm(`단원 '${unitTitle}'을(를) 삭제하시겠습니까?`)) return;
+    setMsg("");
+    try {
+      await deleteUnit(courseId, unitId);
+      loadUnits(selected!);
+      setMsg(`✓ 단원 '${unitTitle}'이 삭제되었습니다.`);
+    } catch (e) {
+      setMsg(`오류: ${(e as Error).message}`);
+    }
+  };
+
+  const handleMoveUnit = async (unitId: number, direction: "up" | "down") => {
+    const unit = units.find((u) => u.id === unitId);
+    if (!unit || !selected) return;
+
+    const newOrder = direction === "up" ? unit.order_index - 1 : unit.order_index + 1;
+    if (newOrder < 0 || newOrder >= units.length) return;
+
+    setMsg("");
+    try {
+      await updateUnitOrder(selected.id, unitId, newOrder);
+      loadUnits(selected);
+    } catch (e) {
+      setMsg(`오류: ${(e as Error).message}`);
+    }
   };
 
   const handleAddSection = async (unitId: number) => {
@@ -105,16 +128,50 @@ export default function AdminCoursesPage() {
     setMsg("");
     try {
       const sections = sectionMap[unitId] || [];
-      const maxOrder = Math.max(0, ...sections.map((s) => s.section_order));
-      // Note: 백엔드 API POST /courses/{courseId}/units/{unitId}/sections가 필요함
-      // 그리고 섹션 생성 함수가 api.ts에 필요함
-      // 일단 placeholder로 구현
-      setMsg(`섹션 '${sectionInputs[unitId]}' 추가 기능은 곧 추가됩니다.`);
+      const maxOrder = Math.max(-1, ...sections.map((s) => s.section_order));
+      await createSection(selected.id, unitId, {
+        title: sectionInputs[unitId].trim(),
+        order: maxOrder + 1,
+      });
       setSectionInputs((prev) => ({ ...prev, [unitId]: "" }));
+      const updated = await getSections(selected.id, unitId).catch(() => [] as Section[]);
+      setSectionMap((prev) => ({ ...prev, [unitId]: updated }));
+      setMsg(`✓ 섹션이 추가되었습니다.`);
     } catch (e) {
       setMsg(`오류: ${(e as Error).message}`);
     } finally {
       setCreatingSection(null);
+    }
+  };
+
+  const handleDeleteSection = async (courseId: number, unitId: number, sectionId: string, sectionTitle: string) => {
+    if (!confirm(`섹션 '${sectionTitle}'을(를) 삭제하시겠습니까?`)) return;
+    setMsg("");
+    try {
+      await deleteSection(courseId, unitId, sectionId);
+      const updated = await getSections(courseId, unitId).catch(() => [] as Section[]);
+      setSectionMap((prev) => ({ ...prev, [unitId]: updated }));
+      setMsg(`✓ 섹션이 삭제되었습니다.`);
+    } catch (e) {
+      setMsg(`오류: ${(e as Error).message}`);
+    }
+  };
+
+  const handleMoveSection = async (courseId: number, unitId: number, sectionId: string, direction: "up" | "down") => {
+    const sections = sectionMap[unitId] || [];
+    const section = sections.find((s) => s.lesson_id === sectionId);
+    if (!section) return;
+
+    const newOrder = direction === "up" ? section.section_order - 1 : section.section_order + 1;
+    if (newOrder < 0 || newOrder >= sections.length) return;
+
+    setMsg("");
+    try {
+      await updateSectionOrder(courseId, unitId, sectionId, newOrder);
+      const updated = await getSections(courseId, unitId).catch(() => [] as Section[]);
+      setSectionMap((prev) => ({ ...prev, [unitId]: updated }));
+    } catch (e) {
+      setMsg(`오류: ${(e as Error).message}`);
     }
   };
 
@@ -269,11 +326,35 @@ export default function AdminCoursesPage() {
                   <button className="btn-primary text-sm px-3 shrink-0" onClick={handleAddUnit}>추가</button>
                 </div>
                 <div className="flex flex-col gap-3">
-                  {units.sort((a, b) => a.order_index - b.order_index).map((u) => (
+                  {units.sort((a, b) => a.order_index - b.order_index).map((u, idx) => (
                     <div key={u.id} className="bg-slate-800/40 border border-slate-700 rounded-lg p-3 flex flex-col gap-2">
-                      <div>
-                        <p className="font-semibold text-sm">{u.title}</p>
-                        <p className="text-xs text-slate-500">순서: {u.order_index}</p>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-semibold text-sm">{u.title}</p>
+                          <p className="text-xs text-slate-500">순서: {u.order_index}</p>
+                        </div>
+                        <div className="flex gap-1">
+                          <button
+                            className="text-xs px-1.5 py-1 rounded bg-slate-700 hover:bg-slate-600"
+                            onClick={() => handleMoveUnit(u.id, "up")}
+                            disabled={idx === 0}
+                          >
+                            ↑
+                          </button>
+                          <button
+                            className="text-xs px-1.5 py-1 rounded bg-slate-700 hover:bg-slate-600"
+                            onClick={() => handleMoveUnit(u.id, "down")}
+                            disabled={idx === units.length - 1}
+                          >
+                            ↓
+                          </button>
+                          <button
+                            className="text-xs px-1.5 py-1 rounded bg-red-900/40 text-red-400 hover:bg-red-900/60"
+                            onClick={() => handleDeleteUnit(selected.id, u.id, u.title)}
+                          >
+                            ✕
+                          </button>
+                        </div>
                       </div>
 
                       {/* 섹션 추가 폼 */}
@@ -294,6 +375,39 @@ export default function AdminCoursesPage() {
                           {creatingSection === u.id ? "중…" : "+"}
                         </button>
                       </div>
+
+                      {/* 섹션 목록 */}
+                      {(sectionMap[u.id] || []).length > 0 && (
+                        <div className="flex flex-col gap-1 mt-2 pt-2 border-t border-slate-700/50">
+                          {sectionMap[u.id]!.sort((a, b) => a.section_order - b.section_order).map((s, sidx) => (
+                            <div key={s.lesson_id} className="flex items-center justify-between gap-1 bg-slate-700/50 px-2 py-1 rounded text-xs">
+                              <span className="text-slate-300">{s.section_title || `섹션 ${s.section_order + 1}`}</span>
+                              <div className="flex gap-0.5">
+                                <button
+                                  className="text-slate-400 hover:text-slate-200"
+                                  onClick={() => handleMoveSection(selected.id, u.id, s.lesson_id, "up")}
+                                  disabled={sidx === 0}
+                                >
+                                  ↑
+                                </button>
+                                <button
+                                  className="text-slate-400 hover:text-slate-200"
+                                  onClick={() => handleMoveSection(selected.id, u.id, s.lesson_id, "down")}
+                                  disabled={sidx === sectionMap[u.id]!.length - 1}
+                                >
+                                  ↓
+                                </button>
+                                <button
+                                  className="text-red-400 hover:text-red-300"
+                                  onClick={() => handleDeleteSection(selected.id, u.id, s.lesson_id, s.section_title || `섹션 ${s.section_order + 1}`)}
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
                   {units.length === 0 && <p className="text-slate-500 text-sm text-center py-4">단원이 없습니다.</p>}

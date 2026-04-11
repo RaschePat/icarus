@@ -194,6 +194,77 @@ async def create_unit(course_id: int, body: UnitCreate, db: AsyncSession = Depen
     return row
 
 
+@router.delete("/{course_id}/units/{unit_id}")
+async def delete_unit(course_id: int, unit_id: int, db: AsyncSession = Depends(get_db)):
+    """단원 삭제 및 순서 재배치."""
+    unit = await db.get(Unit, unit_id)
+    if not unit or unit.course_id != course_id:
+        raise HTTPException(status_code=404, detail="단원을 찾을 수 없습니다.")
+
+    # 삭제할 단원의 순서
+    deleted_order = unit.order_index
+
+    # 단원 삭제
+    await db.delete(unit)
+    await db.commit()
+
+    # 같은 과정의 더 높은 순서 단원들을 재배치 (한 칸씩 내림)
+    stmt = select(Unit).where(
+        Unit.course_id == course_id,
+        Unit.order_index > deleted_order
+    )
+    higher_units = (await db.execute(stmt)).scalars().all()
+    for u in higher_units:
+        u.order_index -= 1
+    await db.commit()
+
+    return {"status": "deleted"}
+
+
+class UnitUpdateRequest(BaseModel):
+    order_index: int
+
+
+@router.patch("/{course_id}/units/{unit_id}")
+async def update_unit(course_id: int, unit_id: int, body: UnitUpdateRequest, db: AsyncSession = Depends(get_db)):
+    """단원 순서 업데이트."""
+    unit = await db.get(Unit, unit_id)
+    if not unit or unit.course_id != course_id:
+        raise HTTPException(status_code=404, detail="단원을 찾을 수 없습니다.")
+
+    old_order = unit.order_index
+    new_order = body.order_index
+
+    if old_order == new_order:
+        return {"status": "ok"}
+
+    # 이동 방향 확인
+    if new_order > old_order:
+        # 아래로 내림: old_order ~ new_order-1 범위를 위로 올림
+        stmt = select(Unit).where(
+            Unit.course_id == course_id,
+            Unit.order_index > old_order,
+            Unit.order_index <= new_order
+        )
+        units_to_shift = (await db.execute(stmt)).scalars().all()
+        for u in units_to_shift:
+            u.order_index -= 1
+    else:
+        # 위로 올림: new_order ~ old_order-1 범위를 아래로 내림
+        stmt = select(Unit).where(
+            Unit.course_id == course_id,
+            Unit.order_index >= new_order,
+            Unit.order_index < old_order
+        )
+        units_to_shift = (await db.execute(stmt)).scalars().all()
+        for u in units_to_shift:
+            u.order_index += 1
+
+    unit.order_index = new_order
+    await db.commit()
+    return {"status": "ok"}
+
+
 # ── 섹션(수업일) 엔드포인트 ───────────────────────────────────────────────
 
 @router.get("/{course_id}/units/{unit_id}/sections", response_model=list[SectionResponse])
@@ -243,5 +314,83 @@ async def create_section(course_id: int, unit_id: int, body: SectionCreate, db: 
         "section_order": row.section_order,
         "created_at": row.created_at.isoformat(),
     }
+
+
+@router.delete("/{course_id}/units/{unit_id}/sections/{section_id}")
+async def delete_section(course_id: int, unit_id: int, section_id: str, db: AsyncSession = Depends(get_db)):
+    """섹션 삭제 및 순서 재배치."""
+    unit = await db.get(Unit, unit_id)
+    if not unit or unit.course_id != course_id:
+        raise HTTPException(status_code=404, detail="단원을 찾을 수 없습니다.")
+
+    section = await db.get(Lesson, section_id)
+    if not section or section.unit_id != unit_id:
+        raise HTTPException(status_code=404, detail="섹션을 찾을 수 없습니다.")
+
+    deleted_order = section.section_order
+
+    # 섹션 삭제
+    await db.delete(section)
+    await db.commit()
+
+    # 같은 단원의 더 높은 순서 섹션들을 재배치
+    stmt = select(Lesson).where(
+        Lesson.unit_id == unit_id,
+        Lesson.section_order > deleted_order
+    )
+    higher_sections = (await db.execute(stmt)).scalars().all()
+    for s in higher_sections:
+        s.section_order -= 1
+    await db.commit()
+
+    return {"status": "deleted"}
+
+
+class SectionUpdateRequest(BaseModel):
+    section_order: int
+
+
+@router.patch("/{course_id}/units/{unit_id}/sections/{section_id}")
+async def update_section(course_id: int, unit_id: int, section_id: str, body: SectionUpdateRequest, db: AsyncSession = Depends(get_db)):
+    """섹션 순서 업데이트."""
+    unit = await db.get(Unit, unit_id)
+    if not unit or unit.course_id != course_id:
+        raise HTTPException(status_code=404, detail="단원을 찾을 수 없습니다.")
+
+    section = await db.get(Lesson, section_id)
+    if not section or section.unit_id != unit_id:
+        raise HTTPException(status_code=404, detail="섹션을 찾을 수 없습니다.")
+
+    old_order = section.section_order
+    new_order = body.section_order
+
+    if old_order == new_order:
+        return {"status": "ok"}
+
+    # 이동 방향 확인
+    if new_order > old_order:
+        # 아래로 내림
+        stmt = select(Lesson).where(
+            Lesson.unit_id == unit_id,
+            Lesson.section_order > old_order,
+            Lesson.section_order <= new_order
+        )
+        sections_to_shift = (await db.execute(stmt)).scalars().all()
+        for s in sections_to_shift:
+            s.section_order -= 1
+    else:
+        # 위로 올림
+        stmt = select(Lesson).where(
+            Lesson.unit_id == unit_id,
+            Lesson.section_order >= new_order,
+            Lesson.section_order < old_order
+        )
+        sections_to_shift = (await db.execute(stmt)).scalars().all()
+        for s in sections_to_shift:
+            s.section_order += 1
+
+    section.section_order = new_order
+    await db.commit()
+    return {"status": "ok"}
 
 

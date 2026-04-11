@@ -121,6 +121,39 @@ export async function getSections(courseId: number, unitId: number): Promise<Sec
   return apiFetch(`/courses/${courseId}/units/${unitId}/sections`);
 }
 
+export async function createSection(courseId: number, unitId: number, data: { title: string; order: number }): Promise<Section> {
+  return apiFetch(`/courses/${courseId}/units/${unitId}/sections`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteSection(courseId: number, unitId: number, sectionId: string): Promise<void> {
+  await apiFetch(`/courses/${courseId}/units/${unitId}/sections/${sectionId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function deleteUnit(courseId: number, unitId: number): Promise<void> {
+  await apiFetch(`/courses/${courseId}/units/${unitId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function updateUnitOrder(courseId: number, unitId: number, order: number): Promise<void> {
+  await apiFetch(`/courses/${courseId}/units/${unitId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ order_index: order }),
+  });
+}
+
+export async function updateSectionOrder(courseId: number, unitId: number, sectionId: string, order: number): Promise<void> {
+  await apiFetch(`/courses/${courseId}/units/${unitId}/sections/${sectionId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ section_order: order }),
+  });
+}
+
 export async function enrollStudent(lessonId: string, studentId: string): Promise<void> {
   await apiFetch(`/lessons/${lessonId}/enroll`, {
     method: "POST",
