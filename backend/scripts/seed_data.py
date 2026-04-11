@@ -448,10 +448,14 @@ class IcarusSeeder:
 
             top_category = random.choice(top_categories)
 
+            top_keywords_list = [f"keyword_{i}" for i in range(random.randint(3, 5))]
+            keyword_freq_dict = {kw: random.randint(1, 10) for kw in top_keywords_list}
+
             interest_profile = {
                 "top_category": top_category,
                 "category_counts": {top_category: random.randint(5, 15)},
-                "top_keywords": [f"keyword_{i}" for i in range(random.randint(3, 5))],
+                "top_keywords": top_keywords_list,
+                "keyword_freq": keyword_freq_dict,
             }
 
             # POST /v1/user/profile/{user_id} 호출

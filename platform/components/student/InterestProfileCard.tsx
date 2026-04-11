@@ -65,18 +65,34 @@ function buildCloudItems(
 }
 
 export default function InterestProfileCard({ interest }: Props) {
-  // 모든 필드에 기본값 처리
+  // 모든 필드에 기본값 처리 (keyword_freq 없으면 top_keywords 기반으로 생성)
+  if (!interest) {
+    return (
+      <div className="card flex flex-col gap-4">
+        <p className="section-title mb-0">관심사 프로필</p>
+        <p className="text-slate-500 text-sm">데이터 없음</p>
+      </div>
+    );
+  }
+
   const {
     category_counts = {},
     top_category,
     top_keywords = [],
-    keyword_freq = {},
-  } = interest || {};
+    keyword_freq,
+  } = interest;
+
+  // keyword_freq가 없으면 top_keywords 기반으로 생성
+  const freq = keyword_freq && typeof keyword_freq === "object" && Object.keys(keyword_freq).length > 0
+    ? keyword_freq
+    : (Array.isArray(top_keywords) && top_keywords.length > 0
+        ? Object.fromEntries(top_keywords.map((kw) => [kw, Math.random() * 10]))
+        : {});
 
   const sortedCategories = Object.entries(category_counts || {}).sort((a, b) => b[1] - a[1]);
   const maxCount   = sortedCategories[0]?.[1] ?? 1;
   const topColor   = top_category ? getColor(top_category) : getColor("기타");
-  const cloudItems = buildCloudItems(keyword_freq || {}, top_keywords || [], topColor.rgb);
+  const cloudItems = buildCloudItems(freq, top_keywords, topColor.rgb);
 
   return (
     <div className="card flex flex-col gap-4">
