@@ -77,6 +77,11 @@
           "type": "string",
           "default": "",
           "description": "학생 user_id (플랫폼에서 받은 ID)"
+        },
+        "wing.userToken": {
+          "type": "string",
+          "default": "",
+          "description": "JWT 인증 토큰 (플랫폼 로그인 후 받은 token)"
         }
       }
     }

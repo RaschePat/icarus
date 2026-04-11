@@ -19,14 +19,18 @@ export class ActivityTracker {
     const config = vscode.workspace.getConfiguration("wing");
     const backendUrl: string = config.get("backendUrl") ?? "http://localhost:8000";
     const userId: string = config.get("userId") ?? this._userId;
+    const token: string = config.get("userToken") ?? "";
 
     if (!userId || !backendUrl) return;
 
     try {
       const sessionId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) { headers["Authorization"] = `Bearer ${token}`; }
+
       await fetch(`${backendUrl}/v1/activity/log`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
           session_id: sessionId,
           user_id: userId,

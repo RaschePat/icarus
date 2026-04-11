@@ -105,7 +105,11 @@ export async function activate(context: vscode.ExtensionContext) {
     try {
       const config   = vscode.workspace.getConfiguration("wing");
       const baseUrl: string = config.get("backendUrl") ?? "http://localhost:8000";
-      const res = await fetch(`${baseUrl}/v1/today-lesson`);
+      const token: string = config.get("userToken") ?? "";
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) { headers["Authorization"] = `Bearer ${token}`; }
+
+      const res = await fetch(`${baseUrl}/v1/today-lesson`, { headers });
       if (!res.ok) { return; }
       const data = await res.json() as { lesson_id: string | null };
       const newId = data.lesson_id;

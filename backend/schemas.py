@@ -71,6 +71,15 @@ class ActivityLogRequest(BaseModel):
     session_aptitude: SessionAptitude
 
 
+class ActivityEventRequest(BaseModel):
+    """Wing Extension에서 보내는 개별 이벤트 로그."""
+    session_id: str
+    user_id: str
+    event_type: str  # WING_REQUEST, INPUT_TYPE, FOCUS_CHANGE
+    data: dict[str, Any]
+    timestamp: datetime
+
+
 class ActivityLogResponse(BaseModel):
     status: str
 
