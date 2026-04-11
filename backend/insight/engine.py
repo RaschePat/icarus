@@ -304,7 +304,7 @@ async def _build_ai_comment(
     if redflag:
         redflag_text = f"{redflag['severity']} ({redflag['cause']})"
 
-    prompt = f"""당신은 IT 부트캠프 강사를 돕는 학습 분석 AI입니다.
+    prompt = f"""당신은 교육 현장의 강사를 돕는 학습 분석 AI입니다.
 아래 수강생 세션 데이터를 바탕으로 강사가 참고할 수 있는 자연어 코멘트를 한국어 2~3문장으로 작성하세요.
 수치를 그대로 나열하지 말고, 학습 상태·강점·주의사항을 통합해 서술하세요.
 

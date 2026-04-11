@@ -6,7 +6,7 @@ import { auth } from "@/lib/auth";
 
 export const metadata: Metadata = {
   title: "ICARUS Platform",
-  description: "AI 기반 IT 부트캠프 통합 플랫폼",
+  description: "AI 기반 교육 현장 통합 플랫폼",
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {

@@ -38,7 +38,7 @@ export default function LoginPage() {
           {/* 로고 */}
           <div className="text-center">
             <h1 className="text-2xl font-bold text-slate-100">ICARUS</h1>
-            <p className="text-slate-400 text-sm mt-1">AI 기반 IT 부트캠프 플랫폼</p>
+            <p className="text-slate-400 text-sm mt-1">AI 기반 교육 현장 플랫폼</p>
           </div>
 
           {/* 폼 */}

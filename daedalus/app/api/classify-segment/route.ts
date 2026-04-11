@@ -27,7 +27,7 @@ function buildSystem(topic?: string, keywords?: string[], libraries?: string[]):
       ? `\n\n[수업 맥락]\n${contextLines.join("\n")}\n위 맥락을 기준으로 수업과 무관한 사담·잡음을 판별하세요.`
       : "";
 
-  return `당신은 IT 부트캠프 강의 STT 텍스트 분석 엔진입니다.
+  return `당신은 교육 현장의 강의 STT 텍스트 분석 엔진입니다.
 강사의 실시간 발화 전체(사담·잡음 포함)를 받아 핵심 수업 내용만 추출합니다.${contextBlock}
 
 분류 기준:
